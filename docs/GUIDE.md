@@ -207,9 +207,11 @@ list, one row per container that receives something, under the heading
 **Categories it receives**. On a window about 1100 px wide or wider it is two
 columns; narrower than that the second column reflows underneath. A category
 with nowhere to go is
-listed in the **No destination** card, in the right-hand column under Sources,
-with a "route to..." picker; choose a container and the category is routed
-there. Every row also carries a **+** button that opens a category picker, so a
+listed in the **No destination** card, in the right-hand column under Sources.
+That card is a fold and starts closed, so the Sources list above it has the
+room: press its heading to open it, or press **Fix** on the routing warning,
+which opens it for you. Each category in it has a "route to..." picker; choose
+a container and the category is routed there. Every row also carries a **+** button that opens a category picker, so a
 container can be given a second category from its own row, and a category can
 be given a second container by adding it to another row. The second one takes the overflow when the first is full, and the
 numbered badges on the chips show that order. Each chip has a remove button for
@@ -914,9 +916,9 @@ the six sections, Left and Right do the same, and Home and End jump to the
 first and last.
 
 **Routing.** A category with nowhere to go has a "route to..." select in the
-**No destination** card. Every container row in the **Destinations** list has a
-**+** button that opens an add-a-category select, and every chip in it has a
-remove button.
+**No destination** card, which is a fold: Enter or Space on its heading opens
+it. Every container row in the **Destinations** list has a **+** button that
+opens an add-a-category select, and every chip in it has a remove button.
 
 **Unrouting.** The remove button on a chip drops that one container.
 **Remove from everywhere** at the foot of the No destination card takes a

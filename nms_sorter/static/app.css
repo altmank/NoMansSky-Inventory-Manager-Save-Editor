@@ -890,6 +890,16 @@ button,.btn,.iconbtn,.chip .x,.del,.linkbtn,.fchip{min-height:24px}
 /* the reason it is off, on its own line inside the box: a `title` on a
    disabled button reaches nobody (D2), and Apply already says this. */
 .confirm .cwhy{flex:1 1 100%;margin:0}
+/* A confirmation under a table row: one spanning cell, so the question has the
+   width of the list rather than the width of one `td`. The sources one was a
+   73 px column of wrapped words 292 px tall with 239 px of itself outside a
+   63 px scroller. */
+tr.confirm-row>td.confirm-cell{padding:0;border-bottom:0}
+tr.confirm-row .confirm{margin:4px var(--s2)}
+/* and under a rule row, where it was a flex item in the middle of the row,
+   laid over the controls it was asking about */
+#item-rules>.confirm{margin:4px var(--s3)}
+.unroute-all>.confirm{flex:1 1 100%}
 
 /* what a Fix button points at, for two seconds */
 .pulse{animation:pulse 1s ease-in-out 4;outline:1px solid var(--amber-dim)}
@@ -1211,6 +1221,21 @@ td .chipwrap{align-items:center}
 .unrouted>select{flex:0 0 104px;min-width:0}
 .unrouted+.unrouted{border-top:1px solid var(--line)}
 .unroute-all{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+/* the No-destination card's own fold: the summary is the card's head, so a
+   closed card is the head and nothing else. The `h2` keeps the heading
+   outline; the count sits beside it, closed or open. */
+.nd-fold>summary{cursor:pointer;list-style:none;display:flex;
+  align-items:center;gap:var(--s2);min-height:24px;padding:var(--s2) var(--s3)}
+.nd-fold>summary::-webkit-details-marker{display:none}
+.nd-fold>summary::before{content:"+";color:var(--ink-3);font-weight:700;
+  font-size:13px;width:9px}
+.nd-fold[open]>summary::before{content:"-"}
+.nd-fold[open]>summary{border-bottom:1px solid var(--line)}
+.nd-fold>summary:hover{background:var(--surface-2)}
+.nd-fold>summary>h2{font-size:15px}
+/* `.card>.bd` gave these `cursor:default`; inside the fold they are a
+   grandchild of the card and would inherit its pointer. */
+.nd-fold .bd,.nd-fold .unroute-note{cursor:default}
 .unroute-fold{flex:none;border-top:1px solid var(--line)}
 .unroute-fold>summary{cursor:pointer;list-style:none;font-size:12px;
   color:var(--ink-2);padding:var(--s2) var(--s3);min-height:24px;
@@ -1427,19 +1452,28 @@ table.plan-diff .whycell div{margin:1px 0}
 #tab-categories .colstack>.card>.bd.tight,
 #tab-rules .colstack>.card>.bd.tight{flex:none}
 /* and the shelf is bounded and scrolls, so 18 unrouted categories cannot push
-   the Sources list off the screen either. 120 px is three and a half of the
-   32 px rows the row rule above makes, and the card's cap is now high enough
-   that it can never take the shelf below them (it did: 35 px of window over
-   295 px of content, at every window size, so none of the four rows fitted). */
-#bucket-shelf{flex:1 1 auto;min-height:32px;max-height:112px;overflow-y:auto;
+   the Sources list off the screen either. 106 px is three of the 33 px rows
+   the row rule above makes plus the shelf's own 2 px of padding, which is
+   what the fold opens to; it is a fixed cap rather than a flexed one because
+   the card is now sized by its content and nothing above it has a share to
+   give. */
+#bucket-shelf{flex:none;min-height:34px;max-height:106px;overflow-y:auto;
   overscroll-behavior:contain;padding:2px var(--s3)}
-/* The No-destination card is the bounded one, and the list beside it keeps
-   what it needs. Sizing that card by its content is what left the Destinations
-   list 84 px of a 995 px table in the first place, so it is capped and its
-   shelf scrolls inside the cap; the Sources list above it takes its natural
-   height. 6a: the right column has about 117 px spare and a shelf row is one
-   line. */
-#tab-categories .colstack>.card.fixed{flex:none;max-height:232px}
+/* The No-destination card is sized by its own content, and closed that is one
+   summary: 56 px, against the 211 px it took with the shelf open. The Sources
+   list takes everything else in the column. */
+#tab-categories .colstack>.card.fixed{flex:none}
+/* Chrome, in a 431 px column where every 34 px is a source the owner can see:
+   the two cards' own padding (12 px top and bottom, 24 px of the column each),
+   the card heads (8 px top and bottom) and the gap above the second control
+   row were sized for a card that stands on its own. Trimmed here only, and
+   only in this column pair, they give the Sources list 25 px -- three quarters
+   of a row closed, a whole row with the shelf open. */
+#tab-categories .colstack>.card{padding:var(--s2) var(--s3)}
+#tab-categories .colstack>.card>.hd,
+#tab-categories .colstack>.card .nd-fold>summary{padding:4px var(--s3)}
+#tab-categories .colstack>.card>.bd.tight{padding:6px var(--s3)}
+#tab-categories .colstack>.card>.bd.tight .row.gap{margin-top:6px}
 /* The Add-a-source row was two lines and 60 px of a column whose two lists
    need every pixel: a 70 px label plus a select at its natural 177 px plus
    the Add button is 305 px in a 291 px row, and a flex line wraps before it
@@ -1458,6 +1492,12 @@ table.plan-diff .whycell div{margin:1px 0}
 .unroute-all .field select{flex:1 1 90px;min-width:0}
 #assign-scroll,#item-rules.scrollin,#options.scrollin,#sources.scrollin{
   max-height:none;flex:1;min-height:0;width:100%}
+/* and the Sources list fills the right column: with the No-destination card
+   folded it measures 237 px of the 431 px column at 1280x720, seven of its
+   34 px rows, where it had 63 px and one row. The floor is two rows, so a
+   short window still leaves a list rather than the sliver the owner
+   reported (this rule is after the one above, which zeroes it). */
+#sources.scrollin{min-height:68px}
 /* a warning list is content, not a column: bounded so it can never push the
    lists off the screen, and it is the only thing in the section that can. */
 #issues,#rules-issues{flex:none;max-height:124px;overflow-y:auto;

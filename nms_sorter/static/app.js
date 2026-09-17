@@ -56,6 +56,10 @@ function focusMemo() {
    `src-0-up` at the top of the list is inert, so focus goes to `src-0-down`. */
 function focusRestore(key) {
   if (!key) return false;
+  // A control inside a closed `details` has no `offsetParent`, so the shelf's
+  // own keys open the fold before they are looked for: a category that has
+  // just lost its last destination is shown where it went.
+  if (/^unrouted-/.test(key)) openShelf();
   const tries = [key];
   if (/-up$/.test(key)) tries.push(key.replace(/-up$/, "-down"));
   if (/-down$/.test(key)) tries.push(key.replace(/-down$/, "-up"));
@@ -276,19 +280,61 @@ async function doUndo() {
   toast("undone");
 }
 
+/* --------------------------------------------------- where a confirmation goes
+   `insertAdjacentElement("afterend")` on the control is right for a control in
+   a block, and wrong for one in a row: a `div` after a `td` is an anonymous
+   cell 73 px wide, so the sources confirmation was 292 px tall inside a 63 px
+   scroller with 239 px of it clipped away -- the owner's "confirm ui that you
+   can't even read". The same insertion inside `.rule`, a nowrap flex row, laid
+   the box over the rule's own controls.
+
+   So the box goes *under the whole row*, full width, in the row's own flow: a
+   `tr` with one spanning cell in a table, a block after the row everywhere
+   else. It is still in place and still scrollable-to, and nothing about it is
+   clipped. */
+/* The pair every remove in Categories and Rules uses: the press is a removal,
+   so the buttons say so. "yes, do it" and "no" stay the default for the rest
+   (stop, revert, restore, put a kept configuration back). */
+const REMOVE_YN = { yes: "yes, remove", no: "cancel" };
+function confirmRowHost(anchor) {
+  const tr = anchor.closest("tr");
+  if (tr && tr.parentNode && (tr.parentNode.tagName === "TBODY"
+                              || tr.parentNode.tagName === "TABLE")) {
+    return { row: tr, cells: tr.cells.length };
+  }
+  // `.destrow` is deliberately not here: `#store-grid` is a `role="grid"`,
+  // whose children have to be rows, and the chip confirmation measured
+  // unclipped and full width where it already sits (372x71 in a chip that
+  // wraps). The rule row is the other one that needed moving.
+  const row = anchor.closest(".rule");
+  return row ? { row: row, cells: 0 } : null;
+}
+
 /* ------------------------------------------------- inline confirmation (D17)
    Not `window.confirm`: a modal steals the page and says nothing about what is
-   about to be lost. This sits on the row, names the damage, and puts the focus
-   on "no". */
-function confirmInline(anchor, question, onYes, tick, whyOff) {
-  const host = anchor.parentNode;
-  if (host) Array.from(host.querySelectorAll(".confirm")).forEach(n => n.remove());
+   about to be lost. This sits under the row, names the damage, and puts the
+   focus on the cancel button. `labels` renames the pair for a removal, where
+   "yes, remove" and "cancel" say what the press does. */
+function confirmInline(anchor, question, onYes, tick, whyOff, labels) {
+  // one at a time in a section: the old rule looked at the control's own
+  // parent, which the row host above is no longer inside.
+  const scope = anchor.closest(".stage-panel, .savebar, .railfoot") || document;
+  Array.from(scope.querySelectorAll(".confirm")).forEach(n => {
+    const owner = n.closest("tr.confirm-row");
+    (owner || n).remove();
+  });
   const box = el("div", "confirm");
   box.setAttribute("role", "group");
   box.appendChild(el("span", "cq", question));
-  const yes = el("button", "btn tiny confirm-yes", "yes, do it");
-  const no = el("button", "btn tiny", "no");
-  const close = () => { box.remove(); if (anchor.isConnected) anchor.focus(); };
+  const yes = el("button", "btn tiny confirm-yes",
+                 (labels && labels.yes) || "yes, do it");
+  const no = el("button", "btn tiny", (labels && labels.no) || "no");
+  const host = confirmRowHost(anchor);
+  const close = () => {
+    const owner = box.closest("tr.confirm-row");
+    (owner || box).remove();
+    if (anchor.isConnected) anchor.focus();
+  };
   no.onclick = close;
   // An optional second condition on the row: `tick` is a sentence the player
   // has to agree to before "yes, do it" turns on, and its answer is handed to
@@ -314,13 +360,32 @@ function confirmInline(anchor, question, onYes, tick, whyOff) {
       if (why) why.textContent = cb.checked ? "" : whyOff;
     };
   }
-  yes.onclick = () => { box.remove(); onYes(cb ? cb.checked : false); };
+  yes.onclick = () => {
+    const owner = box.closest("tr.confirm-row");
+    (owner || box).remove();
+    onYes(cb ? cb.checked : false);
+  };
   box.appendChild(yes); box.appendChild(no);
   box.addEventListener("keydown", e => {
     if (e.key === "Escape") { e.stopPropagation(); close(); }
   });
-  anchor.insertAdjacentElement("afterend", box);
-  no.focus();
+  if (host && host.cells) {
+    const tr = el("tr", "confirm-row");
+    const td = el("td", "confirm-cell");
+    td.colSpan = host.cells;
+    td.appendChild(box);
+    tr.appendChild(td);
+    host.row.insertAdjacentElement("afterend", tr);
+  } else if (host) {
+    host.row.insertAdjacentElement("afterend", box);
+  } else {
+    anchor.insertAdjacentElement("afterend", box);
+  }
+  // the sentence first, then the focus: `focus()` scrolls the button it lands
+  // on into view, which on a box taller than its scroller would put the
+  // question off the top of it.
+  if (box.scrollIntoView) box.scrollIntoView({ block: "nearest" });
+  try { no.focus({ preventScroll: true }); } catch (e) { no.focus(); }
   return box;
 }
 
@@ -2013,6 +2078,7 @@ function renderGuide() {
   step(2, "Give each category a destination with its route to… picker.",
     "go to No destination", () => {
       showTab("categories");
+      openShelf();
       const shelf = $("#bucket-shelf");
       reveal(shelf, "start");
       pulse(unroutedChips(), 2000);
@@ -2040,6 +2106,7 @@ function fixFor(issue) {
   if (w === "bucket_rules" && /no destination/.test(m)) {
     return ["show me the categories with no destination", () => {
       showTab(sectionFor(w));
+      openShelf();
       // U11: the count in the sentence and the set highlighted come from one
       // predicate (`unroutedChips`), the scroll lands on the first of them
       // rather than centring a 1,500 px panel, and focus goes to the control
@@ -2236,7 +2303,7 @@ function bucketChip(b, storeKey, ord) {
                 : `unrouted-${b.key}-route`));
           revalidate();
           undoable(`${b.label} no longer goes to ${contLabel(storeKey)}`, before);
-        });
+        }, null, null, REMOVE_YN);
     };
     c.appendChild(x);
   }
@@ -2383,6 +2450,15 @@ function addCategoryControl(key) {
   return wrap;
 }
 
+/* The No-destination shelf is behind a fold (the column cannot hold both
+   lists), so anything that sends the player to a chip in it opens the fold
+   first: a `details` that is closed has no layout and nothing in it can take
+   the focus. */
+function openShelf() {
+  const f = $("#nd-fold");
+  if (f && !f.open) f.open = true;
+  return f;
+}
 function dropzone(node, onDrop) {
   node.ondragover = e => {
     if (!e.dataTransfer.types.includes("text/bucket")) return;
@@ -2679,8 +2755,11 @@ function renderRouting() {
       : "all " + routableBuckets(S.buckets).length + " categories have one";
   }
   // Dropping a chip back on the panel unroutes that category everywhere,
-  // which is destructive and silent, so it asks first (D17).
-  dropzone(shelf, b => unrouteEverywhere(b, shelf));
+  // which is destructive and silent, so it asks first (D17). The zone is the
+  // fold rather than the shelf inside it, so the gesture still has a target
+  // when the fold is closed.
+  const fold = $("#nd-fold");
+  dropzone(fold || shelf, b => unrouteEverywhere(b, fold || shelf));
 
   // ---- A2: the drag-free "remove from everywhere" -----------------------
   const all = $("#unroute-all");
@@ -2730,7 +2809,7 @@ function unrouteEverywhere(bucket, anchor) {
       revalidate();
       undoable(`${label} unrouted from ` +
         plural(where.length, "container", "containers"), before);
-    });
+    }, null, null, REMOVE_YN);
 }
 
 /* Up and down buttons, so an order that can be dragged can also be typed at.
@@ -2809,15 +2888,18 @@ function renderSources() {
     x.title = "remove " + name + " from the sources";
     x.setAttribute("aria-label", x.title);
     fk(x, `src-${i}-remove`);
-    x.onclick = () => confirmInline(tools,
-      `Stop draining ${name}? Nothing would be taken out of it.`,
+    // One sentence, the container's own label in it, under the row it is
+    // about. The anchor is the remove control, not its cell: cancel puts the
+    // focus back on a button rather than on an unfocusable `td`.
+    x.onclick = () => confirmInline(x,
+      `Stop taking items from ${contSay(key)}?`,
       () => {
         const before = snapshot();
         S.config.sources.splice(i, 1);
         focusAfter(`src-${Math.max(0, i - 1)}-remove`);
         revalidate();
         undoable(`${name} is no longer a source`, before);
-      });
+      }, null, null, REMOVE_YN);
     tools.appendChild(x);
     tr.appendChild(tools);
     fixTarget("sources[" + i + "]", tr, () => x.focus());
@@ -3723,7 +3805,10 @@ function ruleRow(rules, r, i, mine) {
     (r._name ? ", on " + r._name : ""));
   // Removing a rule was one click with no way back (D17). It asks on the row,
   // names the rule in the words the sentence uses, and leaves an undo behind.
-  del.onclick = () => confirmInline(body,
+  // The anchor is the remove button, not the row's body: `afterend` on the
+  // body put the box inside `.rule`, a nowrap flex row, over the controls it
+  // was asking about. It goes under the whole rule now.
+  del.onclick = () => confirmInline(del,
     `Remove rule ${i + 1}? ${ruleSentence(r, true)}`,
     () => {
       const before = snapshot();
@@ -3734,7 +3819,7 @@ function ruleRow(rules, r, i, mine) {
       undoable(`rule ${i + 1} removed`, before);
       panelTell(`rule ${i + 1} was removed. ` +
         `The undo button in the save bar puts it back.`);
-    });
+    }, null, null, REMOVE_YN);
   tools.appendChild(del);
   wrap.appendChild(tools);
 

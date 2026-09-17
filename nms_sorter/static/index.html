@@ -219,30 +219,43 @@
              431 px -- leaving the destinations list 84 px of a 995 px table,
              one row of eleven. It scales with the unrouted count, which the
              destinations list must not. -->
+        <!-- Behind its own fold, and closed. Measured at 1280x720: the column
+             is 431 px with the routing warning up, and the two cards need
+             276 px (Sources plus five 34 px rows) and 192 px (this head, three
+             shelf rows and the fold below) -- 468 px for 431. One of them had
+             to give, and the Sources list is the one the owner works down
+             every session while routing a category from here is the rarer
+             press, so the shelf is what folds. Closed this card is 56 px and
+             the Sources list gets 237 px, seven rows; open it is a scroller of
+             three rows and Sources keeps three. The count in the summary and
+             the page's own routing warning are what say there is something in
+             here. -->
         <div class="card fixed">
-          <div class="hd">
-            <h2>No destination</h2>
-            <span class="hint" id="unrouted-count"></span>
-          </div>
-          <div class="bd" id="bucket-shelf"></div>
-          <!-- Behind a fold, for two reasons measured on this card. It sat
-               open directly under the shelf inside the same border, so a
-               destructive control read as part of the no-destination remedy
-               and the QA reviewer would not press it because they could not
-               tell what it removed; and its 45 px was 45 px the shelf did not
-               have, on a card whose whole job is the four rows above. The
-               sentence inside says what it takes away. -->
-          <details class="unroute-fold">
-            <summary>Remove from everywhere</summary>
-            <div class="bd unroute-all tight">
-              <label class="field compact" for="unroute-all"><span>Category</span>
-                <select id="unroute-all" name="unroute-all"></select></label>
-              <button class="btn" id="unroute-all-btn">Remove</button>
-              <span class="hint" id="unroute-all-why"></span>
-            </div>
-            <p class="hint unroute-note">Takes one category off every container
-              it is routed to. Nothing in your save moves and no item is
-              removed; only the routing goes.</p>
+          <details class="nd-fold" id="nd-fold">
+            <summary>
+              <h2>No destination</h2>
+              <span class="hint" id="unrouted-count"></span>
+            </summary>
+            <div class="bd" id="bucket-shelf"></div>
+            <!-- Behind a fold, for two reasons measured on this card. It sat
+                 open directly under the shelf inside the same border, so a
+                 destructive control read as part of the no-destination remedy
+                 and the QA reviewer would not press it because they could not
+                 tell what it removed; and its 45 px was 45 px the shelf did
+                 not have, on a card whose whole job is the rows above. The
+                 sentence inside says what it takes away. -->
+            <details class="unroute-fold">
+              <summary>Remove from everywhere</summary>
+              <div class="bd unroute-all tight">
+                <label class="field compact" for="unroute-all"><span>Category</span>
+                  <select id="unroute-all" name="unroute-all"></select></label>
+                <button class="btn" id="unroute-all-btn">Remove</button>
+                <span class="hint" id="unroute-all-why"></span>
+              </div>
+              <p class="hint unroute-note">Takes one category off every container
+                it is routed to. Nothing in your save moves and no item is
+                removed; only the routing goes.</p>
+            </details>
           </details>
         </div>
       </div>

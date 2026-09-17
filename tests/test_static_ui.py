@@ -249,3 +249,126 @@ def test_no_gate_label_prints_a_plan_fingerprint(js):
     # and the dry-run toast, which has no attribute to hide one in, says what
     # happened instead
     assert '"plan printed: "' in js
+
+
+# ------------------------------------- the Sources card, 2026-09-17 (owner)
+#
+# "Sources ui is unusable, card is too small and trying to delete a source
+# causes a confirm ui that you can't even read." Measured at 1280x720 before
+# the fix: `#sources` was 63 px of client height over 448 px of content, one
+# of thirteen rows, and the remove confirmation was a 73 px column of wrapped
+# words 292 px tall with 239 px of itself outside that scroller. After: 252 px
+# and seven rows, the confirmation 283x71 with nothing clipped.
+
+
+@pytest.fixture(scope="module")
+def html():
+    return _read("index.html")
+
+
+def test_a_source_row_carries_a_remove_control_and_one_readable_sentence(js):
+    """The confirmation names the container the way the rest of the page names
+    one -- the label, its key only on a collision -- and says one thing.
+
+    It also anchors on the remove button rather than on the cell that holds
+    it: `close()` puts the focus back on the anchor, and a `td` cannot take
+    it, so cancel used to drop focus to `<body>`.
+    """
+    fn = re.search(r"function renderSources\(\) \{(?P<body>.*?)\n\}", js, re.S)
+    assert fn, "renderSources moved or was rewritten"
+    body = fn.group("body")
+    # a remove control on every row, with a stable focus key per index
+    assert 'const x = el("button", "iconbtn del");' in body
+    assert "fk(x, `src-${i}-remove`);" in body
+    # the confirmation: anchored on that control, one sentence, the label in it
+    assert "confirmInline(x," in body, \
+        "the confirmation anchors on the remove control"
+    assert "`Stop taking items from ${contSay(key)}?`" in body
+    # one sentence: no second clause, and `contSay` is the visible-prose rule
+    sentence = re.search(r"`Stop taking items from \$\{contSay\(key\)\}\?`",
+                         body)
+    assert sentence and body.count("Stop taking items") == 1
+    assert "Stop draining" not in js, "the two-sentence version is gone"
+    # the key stays in the attributes, where it costs no layout
+    assert "nm.title = c ? `${name} (${key})` : name;" in body
+    # and the buttons say what the press does
+    assert 'const REMOVE_YN = { yes: "yes, remove", no: "cancel" };' in js
+    assert re.search(r"undoable\(`\$\{name\} is no longer a source`, before\);"
+                     r"\s*\}, null, null, REMOVE_YN\);", body)
+
+
+def test_a_confirmation_in_a_list_goes_under_the_whole_row(js, css):
+    """`insertAdjacentElement("afterend")` on a control in a `tr` makes an
+    anonymous table cell as wide as that cell, which is how a 33-character
+    question became 73 px wide and 292 px tall inside a 63 px scroller. The
+    box goes under the row now, in one spanning cell.
+    """
+    fn = re.search(r"function confirmRowHost\(anchor\) \{(?P<body>.*?)\n\}",
+                   js, re.S)
+    assert fn, "confirmRowHost moved or was rewritten"
+    host = fn.group("body")
+    assert 'const tr = anchor.closest("tr");' in host
+    assert "cells: tr.cells.length" in host
+    # the rule row is the other one that laid the box over its own controls,
+    # and it is the only block selector here: `#store-grid` is a role=grid
+    # whose children have to be rows, so the chip confirmation stays in the
+    # chip, where it measured 372x71 with nothing clipped.
+    assert 'const row = anchor.closest(".rule");' in host
+    # the insertion: a spanning cell, and the row is what gets removed again
+    cf = re.search(r"function confirmInline\(anchor, question, onYes, tick, "
+                   r"whyOff, labels\) \{(?P<body>.*?)\n\}", js, re.S)
+    assert cf, "confirmInline's signature moved"
+    box = cf.group("body")
+    assert 'const tr = el("tr", "confirm-row");' in box
+    assert "td.colSpan = host.cells;" in box
+    assert 'box.closest("tr.confirm-row")' in box
+    # Escape cancels, and cancel hands the focus back to the control
+    assert 'if (e.key === "Escape") { e.stopPropagation(); close(); }' in box
+    assert "if (anchor.isConnected) anchor.focus();" in box
+    # the sentence is scrolled to before the focus lands on a button
+    assert 'box.scrollIntoView({ block: "nearest" });' in box
+    # and the cell is not padded into a second layout
+    assert "tr.confirm-row>td.confirm-cell{padding:0;border-bottom:0}" in css
+
+
+def test_the_no_destination_shelf_is_the_one_behind_a_fold(html, css, js):
+    """Both lists cannot fit: at 1280x720 the column is 431 px and the two
+    cards wanted 468. The rarer action folds -- routing a category from the
+    shelf -- not the list the owner works down every session.
+    """
+    assert re.search(r'<details class="nd-fold" id="nd-fold">\s*<summary>\s*'
+                     r'<h2>No destination</h2>\s*'
+                     r'<span class="hint" id="unrouted-count"></span>\s*'
+                     r'</summary>\s*<div class="bd" id="bucket-shelf"></div>',
+                     html), "the fold, its summary or the shelf moved"
+    # closed by default: no `open` attribute on it
+    assert '<details class="nd-fold" id="nd-fold" open' not in html
+    # the card is sized by its content now, and the shelf opens to a scroller
+    assert "#tab-categories .colstack>.card.fixed{flex:none}" in css
+    assert re.search(r"#bucket-shelf\{flex:none;min-height:34px;"
+                     r"max-height:106px;overflow-y:auto;", css)
+    # the Sources list fills what is left, with a floor of two rows
+    assert "#sources.scrollin{min-height:68px}" in css
+    # and anything that sends the player into the shelf opens it first: a
+    # control inside a closed `details` cannot take the focus
+    assert re.search(r"function openShelf\(\) \{\s*const f = \$\(\"#nd-fold\"\);"
+                     r"\s*if \(f && !f\.open\) f\.open = true;", js)
+    assert 'if (/^unrouted-/.test(key)) openShelf();' in js
+    # the drop target is the fold, so the drag gesture survives it being shut
+    assert "dropzone(fold || shelf, b => unrouteEverywhere(b, fold || shelf));" \
+        in js
+
+
+def test_no_row_in_the_sources_list_is_under_the_sheet_floor(css):
+    """24 px is this sheet's own floor for anything pressable (WCAG 2.5.8) and
+    a source row carries four buttons. The rows measured 34 px and the shelf's
+    33 px after the fix; nothing in the column was shrunk to buy the space.
+    """
+    assert "table.srctable tr{height:30px}" in css
+    assert "button,.btn,.iconbtn,.chip .x,.del,.linkbtn,.fchip{min-height:24px}" \
+        in css
+    # the space came off the chrome, not the rows
+    assert "#tab-categories .colstack>.card{padding:var(--s2) var(--s3)}" in css
+    assert re.search(r"#tab-categories \.colstack>\.card>\.hd,\s*"
+                     r"#tab-categories \.colstack>\.card \.nd-fold>summary\{"
+                     r"padding:4px var\(--s3\)\}", css)
