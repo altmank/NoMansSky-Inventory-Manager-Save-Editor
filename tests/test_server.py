@@ -2307,18 +2307,19 @@ def test_a_working_prune_logs_nothing_at_warning(srv, monkeypatch, caplog):
 # P7-6: the version the release is tagged with
 # ==========================================================================
 
-def test_the_version_is_1_0_0_everywhere_it_is_reported(srv):
+def test_the_version_is_the_same_everywhere_it_is_reported(srv):
     """One string, three readers: `/api/version`, the health panel (which is
     what a bug report pastes) and the backup manifest's `app_version`. A
     release tagged `v1.0.0` against a build that reports `0.1.0.dev0` is a bug
-    report nobody can place."""
+    report nobody can place. The value itself is the release's business; the
+    changelog test pins that the tagged version has a section."""
     from nms_sorter import __version__
-    assert __version__ == "1.0.0"
+    assert re.match(r"^\d+\.\d+\.\d+$", __version__), __version__
     status, b = jget(srv, "/api/version")
-    assert status == 200 and b["app"] == "1.0.0"
+    assert status == 200 and b["app"] == __version__
     status, h = jget(srv, "/api/health")
-    assert status == 200 and h["app_version"] == "1.0.0"
-    assert safety._app_version() == "1.0.0"
+    assert status == 200 and h["app_version"] == __version__
+    assert safety._app_version() == __version__
 
 
 # ==========================================================================
