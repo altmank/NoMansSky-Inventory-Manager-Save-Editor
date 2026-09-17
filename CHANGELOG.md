@@ -9,6 +9,8 @@ A data-only regeneration after a game patch bumps the patch version and
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-17
+
 ### Fixed
 
 - The save-version caveat is one complete sentence, written for the mode it is
