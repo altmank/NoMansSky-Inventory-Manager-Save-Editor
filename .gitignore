@@ -1,0 +1,34 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+# PyInstaller rewrites a spec in place when it is given a script instead of a
+# spec; the .bak it leaves is not an artefact anyone wants tracked
+*.spec.bak
+.venv/
+
+# never commit a rotated or pre-change copy of anything
+*.bak
+*.pre-*
+backups/
+
+# a generator run writes a report of what a new game build introduced, for
+# whoever is working through docs/POST-PATCH.md step 4. It is a record of one
+# run and not a release artefact, and it must never reach the package
+# directory the PyInstaller spec ships whole.
+tools/added-in-*.txt
+nms_sorter/data/added-in-*.txt
+
+# no save is committed: a save names a player, their bases and their
+# coordinates. The suite runs on what tools/make_fixture.py synthesises, and
+# on a copy of a real folder passed to --real-saves.
+tests/**/*.hg
+!tests/fixtures/**
+
+# runtime state, which lives in %LOCALAPPDATA% but may be pointed here by --config
+settings.json
+config.json
+.idea/
+.vscode/

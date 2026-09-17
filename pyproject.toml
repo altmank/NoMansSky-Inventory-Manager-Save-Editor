@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nms-inventory-sorter"
+dynamic = ["version"]
+description = "Local, offline inventory sorter and save editor for No Man's Sky"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["no-mans-sky", "save-editor", "inventory"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Games/Entertainment",
+]
+# No runtime dependencies, by design: the codec, the HTTP server and the item
+# table are standard library plus packaged data only.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "hypothesis"]
+data = ["zstandard"]
+
+[project.scripts]
+nms-sorter = "nms_sorter.cli:main"
+
+[tool.setuptools]
+packages = ["nms_sorter"]
+
+[tool.setuptools.dynamic]
+version = { attr = "nms_sorter.__version__" }
+
+[tool.setuptools.package-data]
+# Named file by file rather than `data/*`, because `data/*` also ships
+# whatever a generator run left behind: an `added-in-<build>.txt` report, an
+# editor's swap file. A wheel is a release artefact and its contents should be
+# a decision, not a directory listing.
+nms_sorter = [
+    "data/*.json",
+    "data/DATA_VERSION",
+    "data/DATA_COUNTS",
+    "static/*",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `fuzz` is the hypothesis file, excluded from the push run and executed by the
+# nightly CI job: `pytest tests -q --ignore=tests/test_fuzz.py` on every commit,
+# `pytest tests/test_fuzz.py` at 10,000 examples on a schedule.
+markers = [
+    "fuzz: property tests over the codec under hypothesis (nightly, slow)",
+]

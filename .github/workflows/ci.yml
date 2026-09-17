@@ -1,0 +1,234 @@
+# The push run, the nightly fuzz run and the docs run.
+#
+# Windows is the platform the tool writes saves on; Ubuntu is here to prove the
+# codec, the planner, the config and the server are platform-neutral and that
+# apply *refuses* off Windows rather than guessing (docs/SAFETY.md, "Platform
+# policy"). Python 3.9 is the declared floor and 3.13 is the current release;
+# the pair is what guards the codec's dependency on CPython's private
+# `json.encoder._make_iterencode`, which is the one place a CPython change
+# could silently break byte-exact floats.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    # The release job, and only it, runs on a version tag (P7-1). The tag
+    # filter sits beside the branch filter rather than in a second workflow so
+    # that one file holds every trigger this repository has; the job's own `if`
+    # is what keeps it off ordinary pushes.
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    # 03:00 UTC. Only the `fuzz` job runs on this trigger.
+    - cron: "0 3 * * *"
+
+# One run per ref: a second push to a branch cancels the first, but a run on
+# `main` is never cancelled by a later one.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    # Nightly is for the fuzz job alone; running the matrix again at 03:00
+    # would prove nothing that the last push did not.
+    if: github.event_name != 'schedule'
+    name: tests (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # Before anything imports the package: the floor is declared in
+      # pyproject.toml as requires-python = ">=3.9" because of the dict-union
+      # in server.py, and a matrix entry that drifted below it should fail
+      # here with one sentence rather than inside an import.
+      - name: Python floor
+        run: python -c "import sys; assert sys.version_info >= (3, 9), sys.version"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # tests/test_fuzz.py is excluded on purpose: it is the `fuzz` job below,
+      # at 10,000 examples, nightly.
+      - name: Tests
+        run: python -m pytest tests -q --ignore=tests/test_fuzz.py
+
+      # The platform policy, proved rather than documented. `game_status()`
+      # cannot answer on Linux -- the Proton process is invisible to a native
+      # check -- and a check that cannot run counts as a refusal, so `known`
+      # is false. P4-1 changes the `method` string from "failed" to
+      # "unsupported: linux"; `known` is false either way, which is why that
+      # is the field asserted here.
+      - name: Platform policy (apply refuses off Windows)
+        if: runner.os == 'Linux'
+        run: |
+          python -c "import nms_sorter.safety as s; st=s.game_status(); print(st); assert st['known'] is False"
+
+  fuzz:
+    # Nightly, and on demand. Not on push: 10,000 examples per property is
+    # minutes, and a codec bug it would find is not introduced by a commit that
+    # does not touch the codec.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: fuzz (10,000 examples)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # A fixed seed and no test shuffling, so a nightly failure is
+      # reproducible from the log alone. `-p no:randomly` is a no-op when
+      # pytest-randomly is not installed, and is kept so that installing it
+      # later cannot make this job non-deterministic.
+      - name: Fuzz
+        env:
+          HYPOTHESIS_PROFILE: ci
+        run: python -m pytest tests/test_fuzz.py -q --hypothesis-seed=0 -p no:randomly
+
+      # The database is what makes hypothesis remember a counter-example
+      # between runs; without it a nightly failure is re-derived from scratch
+      # the next night and may not reappear.
+      - name: Keep the counter-examples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypothesis-examples
+          path: .hypothesis/
+          if-no-files-found: ignore
+
+  docs:
+    # tests/test_docs.py belongs to P5-9 and does not exist yet. The `if` sits
+    # on the *step*, not the job: a job-level `if` is evaluated before
+    # `actions/checkout` runs, so `hashFiles` would look at an empty workspace
+    # and always return an empty string.
+    if: github.event_name != 'schedule'
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Doc tests
+        if: hashFiles('tests/test_docs.py') != ''
+        run: python -m pytest tests/test_docs.py -q
+
+      - name: No doc tests yet
+        if: hashFiles('tests/test_docs.py') == ''
+        run: echo "tests/test_docs.py does not exist yet (P5-9); nothing to run."
+
+  release:
+    # P7-1. A `v*` tag, and nothing else: not a branch push, not a pull
+    # request, not the nightly. Windows only -- the executable is built on the
+    # platform it runs on, there is no cross-compilation, and `build_exe.py`
+    # says so.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    name: release (${{ github.ref_name }})
+    runs-on: windows-latest
+    # The one job in this file that writes anything: the release it creates and
+    # the five files it attaches. Scoped to the job rather than raised at the
+    # top of the workflow, so the test jobs keep the read-only token.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" pyinstaller
+
+      # The version the tag names must exist in the changelog before anything
+      # is built: a release with an empty body is worse than a failed job, and
+      # this costs a second. `changelog_section.py` exits 2 when the section is
+      # missing or empty, which fails the step.
+      #
+      # Written outside `dist/` deliberately: `build_exe.py` hashes *every*
+      # file in `dist/` into `SHA256SUMS`, and the release notes are not one of
+      # the artefacts anybody verifies.
+      - name: Release notes from the changelog
+        run: python packaging/changelog_section.py "${{ github.ref_name }}" -o "${{ runner.temp }}/RELEASE_BODY.md"
+
+      # The two executables, `SHA256SUMS`, the release zip and the zip's own
+      # hash. The zip is the W11 half: it carries the binaries, the sums and
+      # the four documents, flat, so a download is the program *and* its
+      # instructions.
+      - name: Build the executables and the release zip
+        run: python packaging/build_exe.py
+
+      # The same guards the push run has, re-run against the tree the binaries
+      # were built from: the spec still parses, it still ships `data/` and
+      # `static/`, the entry point still imports, and `SHA256SUMS` is in
+      # `sha256sum -c` format.
+      - name: Packaging guards
+        run: python -m pytest tests/test_packaging.py -q
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ runner.temp }}/RELEASE_BODY.md
+          fail_on_unmatched_files: true
+          # The zip first, because it is what somebody should take: the
+          # program and the documents in one download. The three loose files
+          # stay attached so that a player who wants one executable can take
+          # one executable and check it against `SHA256SUMS` without unzipping
+          # anything.
+          #
+          # The zip is globbed rather than named: its name carries
+          # `nms_sorter.__version__` and this file cannot read Python. With
+          # `fail_on_unmatched_files: true` a glob matching nothing fails the
+          # job, which is what should happen if the zip was not built. The two
+          # patterns cannot collide -- one ends `.zip`, the other
+          # `.zip.sha256`.
+          #
+          # The zip's hash is a file of its own because `SHA256SUMS` is
+          # *inside* the zip and cannot carry the hash of the thing that
+          # contains it.
+          files: |
+            dist/NMS-Sorter-*-win64.zip
+            dist/NMS-Sorter-*-win64.zip.sha256
+            dist/NMS-Sorter.exe
+            dist/NMS-Sorter-console.exe
+            dist/SHA256SUMS

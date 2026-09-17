@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NMS Inventory Sorter</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<!-- =========================================================== header ===
+     §3.5: one 60 px row carrying what used to be four stacked bars -- the
+     top bar (75), the save bar (80), the game banner (43) and the tab strip
+     (47), 245 px of chrome before a single control appeared. The picker is a
+     button showing slot and filename, so it cannot truncate mid-word; the
+     long descriptor lives in the menu it opens, where there is room for it.
+     Game state is a pill. The banner below is kept for the two cases that
+     must not be a 12 px pill: the game running, and a save whose metadata
+     disagrees with its size. The rule is: a pill for a state, a banner for a
+     refusal. -->
+<header class="app" id="topbar">
+  <div class="brand">
+    <span class="mark"></span>
+    <span class="title">Inventory Sorter</span>
+  </div>
+  <div class="pickwrap">
+    <button class="savepick" id="save-picker" aria-haspopup="listbox"
+            aria-expanded="false" aria-controls="save-menu">loading</button>
+    <div class="savemenu hidden" id="save-menu" role="listbox"
+         aria-label="Choose save"></div>
+  </div>
+  <div class="saveid">
+    <b id="save-summary"></b>
+    <span id="save-sub">loading</span>
+  </div>
+  <div class="hspace"></div>
+  <div class="pillrow" id="save-warn"></div>
+  <div class="hstats" id="save-stats"></div>
+</header>
+
+<div id="game-banner" class="banner hidden"></div>
+<div id="save-banner"></div>
+
+<div class="shell">
+
+<!-- ============================================================= rail ===
+     F1/F2: the docs teach five ordered steps and the page offered five peer
+     tabs, while the only stepper the page had -- renderGuide's three-step
+     card -- drew itself only when nothing was routed, so it was invisible to
+     everyone who had a configuration. The rail is the stepper, so it cannot
+     self-destruct: numbered, ordered, each step carrying the state that says
+     whether it is done. Nothing is gated; a returning player goes straight
+     to 4.
+     F3: Items and Settings are reference, below a divider. They are reached,
+     not passed through.
+     E6: `stop` is here, separated at the foot, and its real control is in the
+     danger block at the end of Settings. -->
+<nav class="rail" id="tabs" aria-label="Sections">
+  <h3>Sort this save</h3>
+  <div class="tabstrip" role="tablist" aria-orientation="vertical"
+       aria-label="The job, step by step">
+    <button class="step tab active" id="tabbtn-save" role="tab"
+            aria-selected="true" aria-controls="tab-save" data-tab="save">
+      <span class="n">1</span><span class="lbl">Save</span>
+      <span class="meta"></span></button>
+    <button class="step tab" id="tabbtn-categories" role="tab"
+            aria-selected="false" aria-controls="tab-categories"
+            data-tab="categories" tabindex="-1">
+      <span class="n">2</span><span class="lbl">Categories</span>
+      <span class="meta"></span></button>
+    <button class="step tab" id="tabbtn-rules" role="tab" aria-selected="false"
+            aria-controls="tab-rules" data-tab="rules" tabindex="-1">
+      <span class="n">3</span><span class="lbl">Rules</span>
+      <span class="meta"></span></button>
+    <button class="step tab" id="tabbtn-plan" role="tab" aria-selected="false"
+            aria-controls="tab-plan" data-tab="plan" tabindex="-1">
+      <span class="n">4</span><span class="lbl">Plan</span>
+      <span class="meta"></span></button>
+  </div>
+  <!-- Apply is a sub-step of Plan, not a destination: you have to read the
+       plan to tick the box, so it is the same screen. Not a tab, therefore,
+       but a button that goes there and puts focus on the tick. -->
+  <button class="step sub" id="goto-apply">
+    <span class="n">5</span><span class="lbl">Apply</span>
+    <span class="meta" id="apply-state"></span></button>
+
+  <div class="railsep"></div>
+  <h3>Reference</h3>
+  <div class="tabstrip" role="tablist" aria-orientation="vertical"
+       aria-label="Reference">
+    <button class="step tab" id="tabbtn-items" role="tab" aria-selected="false"
+            aria-controls="tab-items" data-tab="items" tabindex="-1">
+      <span class="ic" data-icon="grid"></span><span class="lbl">Items</span>
+      <span class="meta"></span></button>
+    <button class="step tab" id="tabbtn-settings" role="tab"
+            aria-selected="false" aria-controls="tab-settings"
+            data-tab="settings" tabindex="-1">
+      <span class="ic" data-icon="gear"></span><span class="lbl">Settings</span>
+      <span class="meta"></span></button>
+  </div>
+
+  <div class="railfoot">
+    <!-- X9: the Settings danger card holds the control with the plain name;
+         this one says which of the two it is, so a screen reader reading the
+         button list does not hear the same destructive label twice. -->
+    <button class="step quiet" id="stop-top"
+            aria-label="Stop the sorter (from the rail)"
+            title="stop the sorter; nothing is written">
+      <span class="ic" data-icon="power"></span>
+      <span class="lbl">Stop</span></button>
+  </div>
+</nav>
+
+<main class="stage">
+
+<!-- ===================================================== SAVE ========== -->
+<section class="stage-panel" id="tab-save" role="tabpanel"
+         aria-labelledby="tabbtn-save" tabindex="-1">
+  <div class="stagehead">
+    <h1>Save</h1>
+    <!-- §5 cut 5: a 30-word lede became thirteen words; the filter chips in
+         the body are the legend it was describing. -->
+    <span class="sub">Every container this save exposes. Open one to see what
+      is in it.</span>
+    <span class="grow"></span>
+    <button class="btn primary next" id="next-categories" data-next="categories">Next: Categories</button>
+  </div>
+  <div class="stagebody">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="chipwrap" id="save-filters" role="group"
+           aria-label="Filter containers"></div>
+      <!-- The "Show unallocated" checkbox was here. Its whole population was
+           grids with no cells, which the server no longer sends, because
+           nothing can ever be in one: it switched between six cards of
+           `0 / 0 cells` and none. What it hid is now one sentence. -->
+      <span class="hint" id="save-hidden"></span>
+    </div>
+    <div id="containers"></div>
+
+    <!-- §5 cuts 6 and 7: the 34-word lede and the 22-word read-only
+         paragraph. The fold's own summary line carries the count, the totals
+         and the word read-only. -->
+    <details class="helpbox" id="extractor-fold">
+      <summary id="extractor-summary-label">Stellar Extractor Cores</summary>
+      <div class="help-body">
+        <p class="hint" id="extractor-lede">The sorter never writes to one.</p>
+        <div id="extractors" class="extractors"></div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- =============================================== CATEGORIES ========== -->
+<!-- F4: Configuration was five unrelated jobs in one 5,933 px tab with two
+     skip links as the only orientation. Its first half is here: where each
+     category goes, and which containers are drained. GUIDE.md calls Sources
+     "the single most common reason a dry run comes back with fewer rows than
+     expected", so it belongs beside the routing, not 2,700 px below it. -->
+<section class="stage-panel hidden" id="tab-categories" role="tabpanel"
+         aria-labelledby="tabbtn-categories" tabindex="-1">
+  <div class="stagehead">
+    <h1>Categories</h1>
+    <span class="sub">Where each category goes.</span>
+    <span class="grow"></span>
+    <button class="btn primary next" id="next-rules" data-next="rules">Next: Rules</button>
+  </div>
+  <div class="stagebody">
+    <div id="rules-gates"></div>
+    <div id="issues"></div>
+    <div id="guide"></div>
+    <div class="cols b">
+      <div class="colstack">
+        <!-- §3.1: one table, one row per container that receives something,
+             stating the relation once and in the direction the player thinks
+             in. Capacity and drain state are printed in the row, not
+             tooltipped (A4). -->
+        <div class="card">
+          <div class="hd">
+            <h2>Destinations</h2>
+            <span class="hint" id="dest-count"></span>
+            <span class="grow"></span>
+            <span data-help="routing" data-help-what="overflow order"></span>
+          </div>
+          <div class="bd flush">
+            <div class="scrollin" id="assign-scroll"><div id="store-grid"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="colstack">
+        <div class="card">
+          <div class="hd">
+            <h2>Sources</h2>
+            <span class="hint">drained in this order</span>
+            <span class="grow"></span>
+            <span data-help="sources" data-help-what="sources"></span>
+          </div>
+          <div class="bd flush">
+            <div class="scrollin" id="sources" role="group"
+                 aria-label="Containers that get drained, in order"></div>
+          </div>
+          <div class="bd tight">
+            <div class="row gap" style="margin-top:0">
+              <label class="field compact grow" for="add-source"><span>Add a source</span>
+                <select id="add-source" name="add-source"></select></label>
+              <button class="btn" id="add-source-btn">Add</button>
+            </div>
+            <div class="row gap">
+              <button class="btn ghost" id="add-all-extractors">Add all extractor cores</button>
+            </div>
+          </div>
+        </div>
+        <!-- A2: the one gesture that had no pointer or keyboard alternative
+             was dragging a chip back onto the shelf to unroute a category
+             everywhere. It is a select and a button here.
+
+             It sits under Sources rather than under Destinations because only
+             the first card in a column was told it could shrink, so this one
+             sized itself to its content and took 269 of the left column's
+             431 px -- leaving the destinations list 84 px of a 995 px table,
+             one row of eleven. It scales with the unrouted count, which the
+             destinations list must not. -->
+        <div class="card fixed">
+          <div class="hd">
+            <h2>No destination</h2>
+            <span class="hint" id="unrouted-count"></span>
+          </div>
+          <div class="bd" id="bucket-shelf"></div>
+          <!-- Behind a fold, for two reasons measured on this card. It sat
+               open directly under the shelf inside the same border, so a
+               destructive control read as part of the no-destination remedy
+               and the QA reviewer would not press it because they could not
+               tell what it removed; and its 45 px was 45 px the shelf did not
+               have, on a card whose whole job is the four rows above. The
+               sentence inside says what it takes away. -->
+          <details class="unroute-fold">
+            <summary>Remove from everywhere</summary>
+            <div class="bd unroute-all tight">
+              <label class="field compact" for="unroute-all"><span>Category</span>
+                <select id="unroute-all" name="unroute-all"></select></label>
+              <button class="btn" id="unroute-all-btn">Remove</button>
+              <span class="hint" id="unroute-all-why"></span>
+            </div>
+            <p class="hint unroute-note">Takes one category off every container
+              it is routed to. Nothing in your save moves and no item is
+              removed; only the routing goes.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ==================================================== RULES ========== -->
+<section class="stage-panel hidden" id="tab-rules" role="tabpanel"
+         aria-labelledby="tabbtn-rules" tabindex="-1">
+  <div class="stagehead">
+    <h1>Rules</h1>
+    <!-- X15: the card below is headed "Per-item rules / read top down, the
+         first match wins", so a stage subtitle here said it twice. -->
+    <span class="grow"></span>
+    <button class="btn primary next" id="next-plan" data-next="plan">Next: Plan</button>
+  </div>
+  <div class="stagebody">
+    <div id="rules-issues"></div>
+    <div class="cols b">
+      <div class="colstack">
+        <div class="card">
+          <div class="hd">
+            <h2>Per-item rules</h2>
+            <span class="hint">read top down &middot; the first match wins</span>
+            <span class="grow"></span>
+            <!-- §5 cuts 17 and 18: the 368-word folded `<dl>` and its three
+                 worked examples. The two decisive sentences stay verbatim in
+                 this `?`; the long form is GUIDE.md §3, which the link opens. -->
+            <span data-help="modes" data-help-what="keep, cap and stock"></span>
+            <a class="guidelink" id="rules-guide" href="/docs/GUIDE.md#3-rules-explained"
+               target="_blank" rel="noreferrer">Guide</a>
+          </div>
+          <!-- X1 (review 3): §5 cut 16 put the `.keycopy` pair behind that `?`,
+               and with it the word "cap" left every visible surface in the
+               application. The exit test names exactly that clause -- a
+               first-timer states the difference between the three without
+               being told where to press -- so one line comes back, naming all
+               three in 21 words. The verbatim pair is still in the `?`. -->
+          <p class="keyline" id="mode-line">keep holds a floor where the item
+            is; cap stops a destination at a ceiling; stock tops one container
+            up from every source.</p>
+          <div class="bd flush">
+            <div class="scrollin" id="item-rules"></div>
+          </div>
+          <div class="bd">
+            <div class="row gap" style="margin-top:0">
+              <div class="combo">
+                <label class="field compact grow" for="new-item"><span>Add a rule for</span>
+                  <input id="new-item" name="new-item" placeholder="e.g. Sodium"
+                         autocomplete="off" spellcheck="false" role="combobox"
+                         aria-expanded="false" aria-controls="suggest"
+                         aria-autocomplete="list"></label>
+                <div class="suggest hidden" id="suggest" role="listbox"
+                     aria-label="Matching items"></div>
+              </div>
+              <button class="btn" id="add-rule">Add rule</button>
+              <!-- X4/X15: on the control's own line rather than under it. Two
+                   stacked hints were 38 px of the section, and every pixel of
+                   chrome here is a rule the owner cannot see.
+                   §5, not cut: the ids-never-from-a-display-name rule.
+                   U28/U37: and why the button is off, beside it. -->
+              <span class="hint" id="new-item-note">Pick a name from the list.
+                The game's own id for it is what gets stored.</span>
+              <span class="hint" id="add-rule-why"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="colstack">
+        <div class="card">
+          <div class="hd"><h2>Run options</h2></div>
+          <div class="bd flush">
+            <div class="scrollin options" id="options"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== PLAN ========== -->
+<section class="stage-panel hidden" id="tab-plan" role="tabpanel"
+         aria-labelledby="tabbtn-plan" tabindex="-1">
+  <div class="stagehead">
+    <h1>Plan</h1>
+    <span class="sub">Nothing is written by a dry run.</span>
+    <span class="grow"></span>
+    <span id="plan-meta" class="hint"></span>
+    <!-- Finding 4: "Verify file" was here, two words with no "when" on them,
+         duplicating the health panel's round-trip line in Settings with more
+         detail. One control, in Settings, beside the line that already gives
+         the same answer and beside "copy as text", which is where both of its
+         audiences are already looking: after a game patch, and when writing
+         an issue. `POST /api/verify` is unchanged. -->
+    <button class="btn primary" id="run-plan">Run dry run</button>
+  </div>
+  <div class="stagebody">
+    <div id="plan-gates"></div>
+    <!-- 3.3: numbers first, across the full width, because the tiles are what
+         the eye should land on. The tables and the apply card split below
+         them: you have to read the plan to tick the box, so the box is beside
+         the plan rather than under 13 move rows. -->
+    <div id="plan-summary"></div>
+    <div class="cols b" id="plan-cols">
+      <div class="colstack" id="plan-left">
+        <div id="plan-tables"></div>
+        <details id="plan-detail" class="plan-detail hidden">
+          <summary id="plan-detail-summary">the detail</summary>
+          <div id="plan-out"></div>
+        </details>
+      </div>
+      <div class="colstack">
+        <div id="apply-zone" class="hidden">
+          <div class="apply-card" id="apply-anchor">
+            <div class="hd"><h2>Apply</h2></div>
+            <p class="lede" id="backup-line"></p>
+            <!-- The one warning on the page: no guarantees, and where the copy
+                 is. Short form; README carries it in full. -->
+            <p class="hint" id="apply-warning">No guarantees: a save editor can
+              corrupt a save. The save and its <code>mf_</code> are copied and
+              verified by hash before anything is written, and the Backups card
+              puts them back in one click. Keep your own copies too.</p>
+            <div id="gates" class="gates"></div>
+            <label class="check big" for="confirm"><input type="checkbox"
+              id="confirm" name="confirm">
+              <span>I have read the plan above.</span></label>
+            <!-- Shown only while NMS.exe is running. The process check cannot
+                 tell a main menu from a loaded save, so the player says which,
+                 once per apply. -->
+            <label class="check big hidden" id="menu-check" for="menu-confirm"><input
+              type="checkbox" id="menu-confirm" name="menu-confirm">
+              <span>I am at the main menu, not in a loaded save.</span></label>
+            <p class="hint" id="confirm-note"></p>
+            <button class="btn solid-danger" id="apply" disabled>Apply this plan</button>
+            <!-- D2: why the only write path in the product is off, in words,
+                 beside it: a title on a disabled button reaches nobody. -->
+            <p class="hint" id="apply-why"></p>
+            <div id="apply-out"></div>
+          </div>
+        </div>
+
+        <!-- P2-6: the backups card, plan or no plan: the reason to come
+             looking for it is usually that an apply has already happened.
+             §5 cut 34: a 52-word lede became two words, and the empty state
+             carries the one sentence that is true of an empty list. -->
+        <div class="card">
+          <div class="hd">
+            <h2>Backups</h2>
+            <span class="hint">newest first</span>
+            <span class="grow"></span>
+            <button class="btn sm" id="backups-refresh">Refresh</button>
+          </div>
+          <div class="bd">
+            <p class="hint" id="backups-root"></p>
+            <div id="restore-out"></div>
+            <div class="scrollin" id="backups-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================== ITEMS ========= -->
+<section class="stage-panel hidden" id="tab-items" role="tabpanel"
+         aria-labelledby="tabbtn-items" tabindex="-1">
+  <div class="stagehead">
+    <h1>Items</h1>
+    <!-- §5 cut 26: a 35-word lede became eight words plus the one sentence
+         that states this panel's persistence model where it is true (B7). -->
+    <span class="sub" id="items-sub">The category each item sorts into.</span>
+    <span class="grow"></span>
+    <span class="hint" id="items-persist">Changes here save as you make them</span>
+  </div>
+  <div class="stagebody">
+    <div class="row gap wrap" style="margin-top:0">
+      <label class="field compact" for="ib-q"><span class="offscreen">Search</span>
+        <input id="ib-q" name="ib-q" placeholder="Search name or id"
+               spellcheck="false"></label>
+      <label class="field compact hidden" for="ib-bucket"><span>Category</span>
+        <select id="ib-bucket" name="ib-bucket"></select></label>
+      <label class="field compact hidden" for="ib-kind"><span>Kind</span>
+        <select id="ib-kind" name="ib-kind"></select></label>
+      <label class="field compact" for="ib-only"><span class="offscreen">Show</span>
+        <select id="ib-only" name="ib-only">
+          <option value="">All items</option>
+          <option value="overridden">Only my overrides</option>
+          <option value="unsorted">Only Unsorted</option>
+          <option value="procedural">Only procedural</option>
+        </select></label>
+      <button class="btn ghost" id="ib-clear">Clear filters</button>
+      <!-- C2: a pager that *replaces* the window, not a "show more" that grew
+           the document past 48,000 px with every row still in the DOM. -->
+      <div class="pager" role="group" aria-label="Page through the item list">
+        <span class="hint" id="ib-count"></span>
+        <button class="btn sm ico" id="ib-prev"
+                aria-label="previous page of items">&#8249;</button>
+        <button class="btn sm ico" id="ib-next"
+                aria-label="next page of items">&#8250;</button>
+      </div>
+    </div>
+
+    <!-- §5 cut 27: "Click a category or a kind to browse it..." -- the chips
+         carry `aria-pressed` and a hover state, and the search field's
+         placeholder says what it searches. -->
+    <div class="chipbar" id="ib-bucket-chips" role="group"
+         aria-label="Filter by category"></div>
+    <div class="chipbar" id="ib-kind-chips" role="group"
+         aria-label="Filter by kind"></div>
+
+    <!-- B6: the bulk bar appears on a selection. -->
+    <div class="row gap wrap hidden" id="ib-bulk">
+      <span class="hint" id="ib-sel-count">nothing selected</span>
+      <label class="field compact" for="ib-bulk-bucket"><span>Change category to</span>
+        <select id="ib-bulk-bucket" name="ib-bulk-bucket"></select></label>
+      <button class="btn" id="ib-bulk-apply">Change the selected rows</button>
+      <button class="btn ghost" id="ib-bulk-clear">Clear selection</button>
+    </div>
+
+    <div id="item-table"></div>
+
+    <!-- §5 cut 31: "The generated categories cannot be renamed or removed
+         here..." is the fold's own summary line now. -->
+    <details class="helpbox" id="custom-buckets-fold">
+      <summary id="custom-buckets-head" tabindex="-1">Your categories
+        <span class="hint" id="nb-summary"></span></summary>
+      <div class="help-body">
+        <div id="custom-buckets"></div>
+        <div class="row gap">
+          <label class="field compact grow" for="nb-label"><span>New category</span>
+            <input id="nb-label" name="nb-label"
+                   placeholder="new category name, e.g. Ammo and Fuel"></label>
+          <button class="btn" id="nb-add">Add category</button>
+          <span class="hint" id="nb-note"></span>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ================================================= SETTINGS ========= -->
+<section class="stage-panel hidden" id="tab-settings" role="tabpanel"
+         aria-labelledby="tabbtn-settings" tabindex="-1">
+  <!-- §5 cut 35: 53 words became five in the header, one notice at the top,
+       and a lock pill per held field instead of the same 13-word sentence
+       seven times (cut 36). -->
+  <div class="stagehead">
+    <h1>Settings</h1>
+    <span class="sub">Everything a command-line flag controls.</span>
+    <span class="grow"></span>
+    <span class="hint" id="settings-note"></span>
+    <button class="btn ghost" id="settings-revert" disabled>Revert</button>
+    <button class="btn primary" id="settings-save" disabled>Save settings</button>
+  </div>
+  <div class="stagebody">
+    <div id="settings-held"></div>
+    <div id="settings-banner"></div>
+    <div id="settings-fields"></div>
+
+    <p class="hint pathline">stored in <code id="settings-path">&hellip;</code></p>
+    <!-- E6: the two paths that used to sit in the primary navigation, beside
+         the fields that set them. -->
+    <div class="paths" id="paths"></div>
+
+    <!-- The owner's ask: "a way to reset the config (don't lose my existing
+         config)". The reset was only ever offered on the unreadable-config
+         startup page, so the one case it could not be reached from was the
+         normal one. Both halves live here: starting over, and the list of
+         what starting over kept, each row a way back. -->
+    <h3 id="startover-head">Start over</h3>
+    <div class="card">
+      <p class="lede">Replaces your rules with the shipped Ten chests layout.
+        The configuration you have now is kept as a file beside
+        <code>config.json</code>, and every one kept that way is listed below.
+        Nothing here is ever deleted.</p>
+      <div class="row gap">
+        <button class="btn danger" id="start-over">Start over from the shipped layout</button>
+        <span class="hint" id="start-over-note"></span>
+      </div>
+      <div id="start-over-out"></div>
+      <div id="kept-list"></div>
+      <p class="hint pathline">kept configurations live in
+        <code id="kept-dir">&hellip;</code></p>
+    </div>
+
+    <!-- E6 / §5 cut 37: a separated danger block, and 122 words of "Stopping
+         the sorter" reduced to 22, keeping the refusal clause verbatim. The
+         idle-exit half moved to the `?` on the field whose number it is
+         about. -->
+    <h3 id="stop-head">Stopping the sorter</h3>
+    <div class="card dangerbox">
+      <p class="lede">Stops the server. Nothing is written. Double-click
+        <code>NMS-Sorter.exe</code> to start it again. It refuses while an
+        apply or a restore is running.</p>
+      <div class="row gap">
+        <button class="btn danger" id="stop-sorter">Stop the sorter</button>
+        <span class="hint" id="stop-note"></span>
+      </div>
+      <div id="stop-out"></div>
+    </div>
+
+    <!-- P2-7: the health panel. §5 cut 38: its 23-word lede is the fold's own
+         summary line. -->
+    <details class="helpbox" id="health-fold">
+      <summary id="health-head">Health <span class="hint">what this
+        installation is &middot; paste it into an issue</span></summary>
+      <div class="help-body">
+        <div class="row gap" style="margin-top:0">
+          <button class="btn ghost" id="health-refresh">Refresh</button>
+          <button class="btn ghost" id="health-copy">Copy as text</button>
+          <button class="btn ghost" id="run-verify">Verify file</button>
+          <span data-help="verify" data-help-what="the file check"></span>
+          <span class="hint" id="health-note"></span>
+        </div>
+        <div id="verify-out"></div>
+        <div id="health"></div>
+      </div>
+    </details>
+    <!-- the same text the copy button writes to the clipboard, kept in the
+         page so it can be selected by hand when the clipboard is not
+         available -->
+    <label class="offscreen" for="health-text">health as plain text</label>
+    <textarea id="health-text" class="offscreen" readonly rows="24"></textarea>
+  </div>
+</section>
+
+<!-- A1: the configuration save bar. One element, moved into the footer of
+     whichever of the two configuration sections is showing, so it is a
+     sibling of that section's scroll area and can never sit over a control
+     the way `position:fixed; bottom:22px` did.
+     W7: a save refused because the file changed under this page says so in
+     `#config-conflict`, immediately above the button that answers it. -->
+<div class="stagefoot savebar hidden" id="savebar">
+  <div id="config-conflict"></div>
+  <span id="dirty-note"></span>
+  <span class="tablespacer"></span>
+  <button class="btn ghost" id="config-reload"
+          title="re-read the configuration file from disk, for a file you edited by hand">Reload from disk</button>
+  <button class="btn ghost" id="undo-last" disabled>Undo last change</button>
+  <button class="btn ghost" id="revert">Revert</button>
+  <button class="btn primary" id="save-config">Save configuration</button>
+</div>
+
+</main>
+</div>
+
+<div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

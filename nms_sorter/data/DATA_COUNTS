@@ -1,0 +1,28 @@
+{
+ "buckets":18,
+ "by_bucket":{
+  "base_decor":742,
+  "base_structures":643,
+  "corvette_parts":640,
+  "cosmetics_appearance":326,
+  "curiosities_artifacts":288,
+  "expedition_rewards":125,
+  "fish":211,
+  "food_ingredients":395,
+  "raw_resources":59,
+  "refined_crafted":43,
+  "salvage_junk":94,
+  "ship_construction":470,
+  "system_meta":134,
+  "tech_upgrades":602,
+  "tech_upgrades_elite":128,
+  "trade_goods":103,
+  "unsorted":90,
+  "utility_consumables":40
+ },
+ "gridnames":7,
+ "ids":5133,
+ "procedural":282,
+ "unsorted":90,
+ "vehicles":7
+}

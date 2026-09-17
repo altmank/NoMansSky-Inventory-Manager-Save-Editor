@@ -1,0 +1,89 @@
+name: Bug report
+description: Something the sorter did that it should not have, or a message you did not expect.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before anything else: if you think a save was damaged, **restore from a
+        backup first** and say so below. The Backups card on the Plan & Apply
+        tab does it in one click; `docs/GUIDE.md` section 6 has the steps.
+        Investigation comes second.
+
+        If you got a message you did not expect, look it up in
+        `docs/TROUBLESHOOTING.md` first. Most messages there are refusals, and a
+        refusal means nothing was written.
+
+        Attaching the save is optional. It helps with anything the plan or
+        apply got wrong. Attach the `mf_` file beside it too.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead. One or two sentences is plenty.
+      placeholder: |
+        I routed Raw Resources to chest3 and ran a dry run. The plan says
+        chest3 is full, but it has eleven empty cells.
+    validations:
+      required: true
+
+  - type: textarea
+    id: health
+    attributes:
+      label: The health panel
+      description: >
+        The Health panel has a "copy as text" button (landing in P2-7; until it
+        does, paste what the panel shows). This carries the save folder, the
+        game-running state, the codec round-trip state, the data version and
+        game build, the config path and version, the backup count, the log path
+        and the app version. It is most of a diagnosis.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: The last 50 lines of the log
+      description: >
+        From `%LOCALAPPDATA%\NMS-Sorter\logs\sorter.log`. If the sorter answered
+        with a reference id, the traceback behind it is in here.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: save-version
+    attributes:
+      label: Save Version and platform string
+      description: >
+        Both are in the save header and both are on the health panel. Container
+        paths were checked on Version 4735 only, so this decides whether you are
+        on a shape we have seen.
+      placeholder: "Version 4735, platform Win|Final"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game-running
+    attributes:
+      label: Was No Man's Sky running, and where were you in it?
+      options:
+        - "No, the game was closed"
+        - "Yes, and I was on the main menu"
+        - "Yes, and I was in a loaded save"
+        - "I am not sure"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Before you post
+      options:
+        - label: No save was written, or I restored the backup.
+          required: true
+        - label: I have not attached a raw save file.
+          required: true

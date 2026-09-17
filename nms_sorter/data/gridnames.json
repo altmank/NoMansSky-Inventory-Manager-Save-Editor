@@ -1,0 +1,62 @@
+[
+ {
+  "grid":"general",
+  "keys":[
+   "INVENTORY",
+   "SUIT"
+  ],
+  "name":"Exosuit Inventory",
+  "vessel":"suit"
+ },
+ {
+  "grid":"cargo",
+  "keys":[
+   "UI_CARGO"
+  ],
+  "name":"Cargo",
+  "vessel":"suit"
+ },
+ {
+  "grid":"general",
+  "keys":[
+   "INVENTORY",
+   "SHIP"
+  ],
+  "name":"Starship Inventory",
+  "vessel":"ship"
+ },
+ {
+  "grid":"cargo",
+  "keys":[
+   "UI_CARGO"
+  ],
+  "name":"Cargo",
+  "vessel":"ship"
+ },
+ {
+  "grid":"general",
+  "keys":[
+   "INVENTORY",
+   "FREIGHTER"
+  ],
+  "name":"Freighter Inventory",
+  "vessel":"freighter"
+ },
+ {
+  "grid":"cargo",
+  "keys":[
+   "UI_FREIGHTER_CARGO"
+  ],
+  "name":"Cargo",
+  "vessel":"freighter"
+ },
+ {
+  "grid":"general",
+  "keys":[
+   "INVENTORY",
+   "VEHICLE_TITLE"
+  ],
+  "name":"Exocraft Inventory",
+  "vessel":"exocraft"
+ }
+]

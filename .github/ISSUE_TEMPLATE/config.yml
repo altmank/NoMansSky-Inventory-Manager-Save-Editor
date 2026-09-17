@@ -1,0 +1,23 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, and "is this supposed to happen?"
+    url: https://github.com/altmank/NoMansSky-Inventory-Manager-Save-Editor/discussions
+    about: >
+      Ask here rather than opening an issue. A question is not a bug until
+      somebody has ruled out a refusal working as designed.
+  - name: Look the message up first
+    url: https://github.com/altmank/NoMansSky-Inventory-Manager-Save-Editor/blob/main/docs/TROUBLESHOOTING.md
+    about: >
+      Every refusal and every error page is listed by its first sentence, with
+      what caused it and what to do. Nothing in that list means a save was
+      written.
+  - name: Read the rules reference
+    url: https://github.com/altmank/NoMansSky-Inventory-Manager-Save-Editor/blob/main/docs/RULES.md
+    about: >
+      Every config key and rule mode, the precedence order the planner applies,
+      and every validation message.
+  - name: Start here if the page is new to you
+    url: https://github.com/altmank/NoMansSky-Inventory-Manager-Save-Editor/blob/main/docs/GUIDE.md
+    about: >
+      First run, your first sort, every tab, and five worked configurations you
+      can paste into the config file.

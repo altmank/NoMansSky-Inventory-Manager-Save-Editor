@@ -1,0 +1,92 @@
+[
+ {
+  "key":"raw_resources",
+  "label":"Raw Resources",
+  "note":"Substances pulled straight out of the world: mined, harvested, shot off asteroids or looted from sentinels."
+ },
+ {
+  "key":"refined_crafted",
+  "label":"Refined and Crafted Materials",
+  "note":"Refiner outputs and crafted intermediates. Not sold and not consumed: they exist to feed blueprints."
+ },
+ {
+  "key":"trade_goods",
+  "label":"Trade Goods",
+  "note":"Bought low, sold high. No use beyond the trade terminal, so it wants its own container."
+ },
+ {
+  "key":"food_ingredients",
+  "label":"Food and Ingredients",
+  "note":"Anything the Nutrient Processor accepts or produces, plus the baits cooked from it."
+ },
+ {
+  "key":"fish",
+  "label":"Fish",
+  "note":"The fishing catalogue. High churn, its own economy, never wanted next to anything else."
+ },
+ {
+  "key":"tech_upgrades",
+  "label":"Technology and Upgrade Modules",
+  "note":"Installable technology plus the C, B and A grade modules that slot beside it. The working stock."
+ },
+ {
+  "key":"tech_upgrades_elite",
+  "label":"S-Class and Illegal Modules",
+  "note":"S-Class, Illegal and Forbidden rolls, and their Supreme/Banned packaged equivalents. Hoarded, compared roll by roll, never spent casually."
+ },
+ {
+  "key":"utility_consumables",
+  "label":"Utility Consumables",
+  "note":"One-shot supplies: fuel, ammo, charge packs and deployable field gear."
+ },
+ {
+  "key":"curiosities_artifacts",
+  "label":"Curiosities and Artifacts",
+  "note":"Story loot, alien relics, procedural dig finds and one-off quest tokens. Hoardable, unusable, best quarantined."
+ },
+ {
+  "key":"expedition_rewards",
+  "label":"Expedition and Seasonal Rewards",
+  "note":"Claimable exclusive starships, multi-tools and companion eggs earned outside normal play."
+ },
+ {
+  "key":"base_structures",
+  "label":"Base Building: Structure",
+  "note":"Load-bearing base parts, terminals, farming and power: what a base is actually made of."
+ },
+ {
+  "key":"base_decor",
+  "label":"Base Building: Decoration",
+  "note":"Purely visual base parts, fossils, posters and fireworks. Enormous, and never needed mid-flight."
+ },
+ {
+  "key":"ship_construction",
+  "label":"Ship and Freighter Construction",
+  "note":"Corvette hull sets, freighter modules and Starship Fabricator components: vehicle building, not base building."
+ },
+ {
+  "key":"cosmetics_appearance",
+  "label":"Cosmetics and Appearance",
+  "note":"Exosuit and ship looks, emotes and companion genetics. Cosmetic only, claim once, never restock."
+ },
+ {
+  "key":"salvage_junk",
+  "label":"Salvage and Junk",
+  "note":"Derelict gunk, flotsam, class-rated salvage and Rusted module rolls. Vendor fodder that clogs a working inventory."
+ },
+ {
+  "key":"packed_tech",
+  "label":"Packed Technology",
+  "note":"Matched by SHAPE, not by id: an id carrying a #hash whose stem no table names. An uninstalled module sits in an inventory as a Product capped at 1 with a procedural hash, and the game generates ids for these that appear in no shipped table. Every other bucket is a lookup; this one is the rule that catches what a lookup cannot."
+ },
+ {
+  "key":"system_meta",
+  "label":"System and Non-Inventory",
+  "note":"Never occupies a storage slot: currencies, reputation deltas, settlement stat tokens, world-object repair sockets, cooking category placeholders."
+ },
+ {
+  "key":"corvette_parts",
+  "label":"Corvette Parts",
+  "note":"Corvette hull sections, bridges, engines, wings and interior fittings: the parts a Corvette is assembled from. Matched on the game's own display name or subtitle containing \"Corvette\", not on the CV_ id prefix -- the 31 procedural CV_* entries are upgrade modules that install into a Corvette, and they stay in Technology and Upgrade Modules. Split out of Ship and Freighter Construction because a Corvette build fills a container on its own and buried the freighter parts next to it."
+ }
+]

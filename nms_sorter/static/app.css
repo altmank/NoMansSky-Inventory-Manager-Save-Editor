@@ -1,0 +1,1542 @@
+/* NMS inventory sorter -- hand-written, no framework, no external asset.
+   Dark, warm, and laid out like an inventory screen rather than a debug dump.
+
+   ===========================================================================
+   The design system (design/PROPOSAL.md §4). Four rules, and every value below
+   is one of them:
+
+   * Surfaces: four steps. `--bg` behind everything, `--surface` for a card,
+     `--surface-2` for a control, `--surface-3` for a recessed or hovered row.
+     A container is separated by a 1px `--line`; state is carried by the
+     surface step, never by both a border and a fill.
+   * Ink: exactly three steps. `--ink` 13.9:1, `--ink-2` 8.1:1, `--ink-3`
+     5.2:1 on `--surface` -- the floor. The ten off-scale inks this file used
+     to carry (#cfe0f2, #9cc9f5, #8fbdea, #e39a9a, #d8c08a, ...) all map onto
+     these three, so the contrast figures are checkable by reading the file.
+   * Type: 12 / 13 / 15 / 18 / 24 / 30. Nothing under 12px, including
+     `.core-where` and `.keep-cell .where`, which both escaped the old floor.
+   * Accent, one job each: amber is the single primary action, the active nav
+     indicator, the brand mark and the rule verb -- and nothing else. Green is
+     a gate that passes and a value that went up. Red is destructive and
+     refusal. `--warn` is a warning surface, always with a glyph and a word.
+     One link blue. Cyan is retired: the merge and backup rows carry a label.
+     The generated category hues stay, because they are data, and they appear
+     only in 8px dots and chip swatches.
+   =========================================================================== */
+
+:root{
+  /* --- surfaces: four steps ------------------------------------------- */
+  --bg:#0B0E13;
+  --surface:#12171F;
+  --surface-2:#171D27;
+  --surface-3:#1D2531;
+  --line:#222B38;
+  --line-2:#2F3A4B;
+  /* A border that is the whole of a thing's shape, and therefore has to pass
+     WCAG 1.4.11's 3:1 for non-text contrast rather than just separate two
+     surfaces. `--line-2` is 1.57:1 on `--surface` and 1.28:1 on
+     `--surface-2`, which is right for a divider and was measured at 1.47 to
+     1.68 on a pill and on the `+` button, where it meant the pill did not
+     read as a pill. This one is 3.33:1 on `--surface` and 3.14:1 on
+     `--surface-2`. */
+  --line-3:#5C6B84;
+  /* kept as aliases so nothing that still names the old token breaks */
+  --bg-2:var(--surface);
+  --panel:var(--surface);
+  --panel-2:var(--surface-2);
+
+  /* --- ink: three steps. Ratios measured on --surface ------------------ */
+  --ink:#E3EAF4;      /* 13.9:1 */
+  --ink-2:#AFBCCE;    /*  8.1:1 */
+  --ink-3:#8A97AD;    /*  5.2:1 -- the floor, never go dimmer */
+
+  /* --- accents: one job each ------------------------------------------ */
+  --amber:#FFB03A;        /* the one primary action, the active rail, the mark */
+  --amber-ink:#241701;
+  --amber-dim:#8A6118;
+  --ok:#5BD48A;           /* a gate that passes, a value that went up */
+  --ok-ink:#9FE3BB;
+  --warn:#E6BC63;         /* a warning surface, always with a glyph */
+  --warn-ink:#EFD49B;
+  --danger:#FF7B7B;       /* destructive, refusal, a value that went down */
+  --danger-ink:#FFBDBD;
+  --link:#8FBDEA;
+  --focus:#FFC670;
+  /* the old names, pointed at the new ones */
+  --green:var(--ok);
+  --red:var(--danger);
+
+  /* --- space: 4 / 8 / 12 / 16 / 24 / 32 / 48 --------------------------- */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s6:24px; --s8:32px; --s12:48px;
+
+  --r:6px;          /* a control */
+  --r2:10px;        /* a card */
+  --radius:var(--r2);
+
+  --rail:212px;
+  --head:60px;
+
+  --sans:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,
+    "Helvetica Neue",Arial,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,"SF Mono",Menlo,monospace;
+}
+
+*{box-sizing:border-box}
+/* C1: 245 px of the 720 px viewport was chrome -- four stacked full-width
+   bars before any content, and on Items the first interactive element was
+   475 px down the page. One 60 px header now, and the page itself never
+   scrolls: the section that is showing owns its own scroll, and inside it so
+   does the one list that owns the overflow (2, "What stays a single
+   scroll"). */
+html,body{margin:0;padding:0;height:100%}
+body{display:flex;flex-direction:column;overflow:hidden}
+header.app,#game-banner,#save-banner{flex:none}
+.shell{flex:1;min-height:0;display:grid;grid-template-columns:var(--rail) 1fr}
+/* The two radial washes are gone: they tinted the top-right of every card
+   differently from its bottom-left, which made the contrast figures
+   unverifiable for no visual gain on #0B0E13. */
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font:13px/1.5 var(--sans);
+  font-variant-numeric:tabular-nums;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+}
+code,.mono{font-family:var(--mono);font-size:12px;letter-spacing:-.01em}
+h1{font-size:18px;font-weight:600;letter-spacing:-.005em;margin:0;color:var(--ink)}
+h2{font-size:15px;font-weight:600;margin:0;color:var(--ink)}
+h3{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
+   color:var(--ink-3);margin:0 0 var(--s2)}
+h4{font-size:13px;font-weight:600;margin:0}
+p{margin:0}
+a{color:var(--link)}
+button,select,input,textarea{font:inherit;color:inherit}
+.hidden{display:none !important}
+svg{display:block;flex:none}
+
+/* ------------------------------------------------------------- top bar */
+/* 3.5: one row. The picker is a button showing slot and filename, so it
+   cannot truncate mid-word; the identity line is the save's own summary,
+   because that is how a player knows which save this is. */
+header.app{
+  height:var(--head);display:flex;align-items:center;gap:var(--s4);
+  padding:0 var(--s4);border-bottom:1px solid var(--line);
+  background:var(--surface);z-index:40;
+}
+.pickwrap{position:relative;flex:none}
+.savepick{display:flex;align-items:center;gap:var(--s2);min-height:32px;
+  background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r);padding:0 var(--s2) 0 var(--s3);color:var(--ink);
+  font:inherit;cursor:pointer;font-weight:600;white-space:nowrap}
+.savepick .slot{color:var(--ink-3);font-weight:400}
+.savepick:hover{border-color:var(--ink-3)}
+.savemenu{position:absolute;top:calc(100% + 4px);left:0;z-index:80;
+  min-width:520px;max-width:min(760px,90vw);max-height:60vh;overflow:auto;
+  background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r2);padding:var(--s1)}
+.saveopt{display:flex;align-items:center;gap:6px;min-height:28px;
+  padding:var(--s1) var(--s2);border-radius:var(--r);font-size:12px;
+  cursor:pointer;color:var(--ink-2)}
+.saveopt:hover{background:var(--surface-3);color:var(--ink)}
+.saveopt.on{background:rgba(255,176,58,.13);color:var(--ink)}
+.saveopt-empty{padding:var(--s2)}
+.saveid{display:flex;flex-direction:column;min-width:0;flex:0 1 auto}
+.saveid b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.saveid span{font-size:12px;color:var(--ink-3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.hspace{flex:1 1 auto;min-width:var(--s2)}
+.pillrow{display:flex;align-items:center;gap:6px;flex:none}
+.hstats{display:flex;gap:var(--s4);flex:none}
+.hstat{display:flex;flex-direction:column;line-height:1.25;text-align:right}
+.hstat b{font-size:13px;font-weight:600}
+.hstat span{font-size:12px;color:var(--ink-3)}
+.picknote{font-size:12px}
+.brand{display:flex;align-items:center;gap:var(--s2);min-width:0}
+.mark{width:9px;height:9px;border-radius:2px;align-self:center;background:var(--amber)}
+.brand .title{font-size:13px;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.brand .sub{color:var(--ink-2);font-size:12px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.topbar-right{display:flex;align-items:center;gap:var(--s4)}
+.stat-strip{display:flex;gap:var(--s6)}
+.stat{display:flex;flex-direction:column;line-height:1.25;text-align:right}
+.stat b{font-size:13px;font-weight:600}
+.stat span{font-size:12px;color:var(--ink-3)}
+
+.field{display:flex;align-items:center;gap:var(--s2)}
+.field>span{font-size:12px;color:var(--ink-2);font-weight:500}
+select,input[type=text],input[type=number],input:not([type]),textarea{
+  min-height:28px;background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r);padding:0 var(--s2);color:var(--ink);outline:none;
+  min-width:0;font-variant-numeric:tabular-nums}
+select{padding-right:var(--s4)}
+input::placeholder{color:var(--ink-3)}
+select:focus,input:focus{border-color:var(--amber-dim)}
+
+/* ------------------------------------------------------------- banner
+   A refusal, not a state. §5's rule: nothing that is merely true gets a
+   full-width colour bar. */
+/* QA 3: `display:flex` made every `<b>` in the prose a flex item and every
+   loose text node an anonymous one, so the running-game sentence -- the one
+   sentence a player most has to read -- was laid out as four ragged columns
+   with 8 px gutters, and a screen reader read it as four fragments. Every
+   banner in this page is one sentence of prose with emphasis in it; none of
+   them holds an icon or a pill. A block is what they were written for. */
+.banner{padding:var(--s2) var(--s6);font-size:13px;display:block;
+  border-bottom:1px solid transparent}
+.banner.danger{background:rgba(255,123,123,.1);border-color:rgba(255,123,123,.35);
+  color:var(--danger-ink)}
+.banner.ok{background:rgba(91,212,138,.08);border-color:rgba(91,212,138,.22);
+  color:var(--ok-ink)}
+.banner.warn{background:rgba(230,188,99,.09);border-color:rgba(230,188,99,.3);
+  color:var(--warn-ink)}
+.banner b{font-weight:650}
+
+/* ---------------------------------------------------------------- rail
+   2: a left rail rather than a top stepper. Seven destinations with live
+   counts do not fit a horizontal stepper at 1000 px without truncating,
+   `adaptive-navigation` prefers a sidebar at >= 1024 px, and a rail can show
+   progress state beside each step -- which is the `multi-step-progress`
+   requirement F1 was missing. It also frees the full height for content. */
+nav.rail{border-right:1px solid var(--line);background:var(--surface);
+  display:flex;flex-direction:column;padding:var(--s3) 0;overflow-y:auto;
+  overflow-x:hidden;min-height:0}
+.rail h3{padding:var(--s2) var(--s4) var(--s1);margin:0}
+.tabstrip{display:flex;flex-direction:column}
+.step{display:flex;align-items:center;gap:var(--s3);min-height:38px;
+  padding:0 var(--s4);color:var(--ink-2);text-decoration:none;
+  border-left:2px solid transparent;font-size:13px;background:none;border-top:0;
+  border-right:0;border-bottom:0;width:100%;text-align:left;cursor:pointer;
+  font-family:inherit;transition:background-color .12s,color .12s}
+.step:hover{color:var(--ink);background:var(--surface-2)}
+.step .n{width:18px;height:18px;flex:none;border-radius:999px;
+  border:1px solid var(--line-2);display:grid;place-items:center;font-size:12px;
+  color:var(--ink-3)}
+.step .ic{width:18px;flex:none;display:grid;place-items:center;
+  color:var(--ink-3)}
+/* `display:block` on purpose: the settings sheet's own `.lbl` (a two-line
+   label-over-hint column) is `display:flex`, and a flex container does not
+   ellipsise its text. This one is a single word in a rail. */
+.step .lbl{flex:1;min-width:0;display:block;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+/* A5: a count that does not fit is truncated with an ellipsis, not clipped
+   mid-glyph. The rail itself never scrolls sideways. */
+.step .meta{font-size:12px;color:var(--ink-3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:96px;flex:0 1 auto;
+  min-width:0;text-align:right}
+.step{min-width:0;overflow:hidden}
+.step.done .n{border-color:rgba(91,212,138,.45);color:var(--ok)}
+/* the active rail indicator is one of amber's four jobs */
+.step.active{color:var(--ink);background:var(--surface-3);
+  border-left-color:var(--amber);font-weight:600}
+.step.active .n{border-color:var(--amber);color:var(--amber)}
+.step.sub{padding-left:38px;min-height:32px}
+.railsep{height:1px;background:var(--line);margin:var(--s3) var(--s4)}
+.railfoot{margin-top:auto;padding-top:var(--s3)}
+/* E6: a destructive action does not belong inside primary navigation. It is
+   separated at the foot, and the control that actually stops the server is in
+   the danger block at the end of Settings. */
+.step.quiet{color:var(--ink-3)}
+.step.quiet:hover{color:var(--ink)}
+.paths{font-size:12px;color:var(--ink-3);margin-top:var(--s1)}
+.paths div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pathline{margin-top:var(--s4)}
+
+/* --------------------------------------------------------------- stage */
+main.stage{display:flex;flex-direction:column;min-width:0;min-height:0}
+.stage-panel{flex:1;min-height:0;display:flex;flex-direction:column;
+  animation:fadein .12s ease-out}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.stagehead{display:flex;align-items:center;gap:var(--s3);
+  padding:var(--s3) var(--s6);border-bottom:1px solid var(--line);flex:none}
+.stagehead .sub{font-size:12px;color:var(--ink-3)}
+.stagehead .grow{flex:1 1 auto;min-width:var(--s2)}
+.stagebody{flex:1;min-height:0;overflow:auto;padding:var(--s4) var(--s6) var(--s6)}
+.stagefoot{display:flex;align-items:center;gap:var(--s2);flex:none;
+  padding:var(--s3) var(--s6);border-top:1px solid var(--line);
+  background:var(--surface);flex-wrap:wrap}
+.cols{display:grid;gap:var(--s4);align-items:start}
+.cols.a{grid-template-columns:minmax(0,1fr) 300px}
+.cols.b{grid-template-columns:minmax(0,1fr) 340px}
+/* QA 3: applying consumes the plan, so `#plan-left` goes to height 0 while
+   the split keeps its 340 px second column. The success report was then a
+   very tall narrow ribbon beside 650 px of empty black, which reads as
+   something having broken. One column while there is no plan to read: the
+   report gets the width, and gets it in the place the card already was. */
+.cols.b.solo{grid-template-columns:minmax(0,1fr)}
+.colstack{display:flex;flex-direction:column;gap:var(--s3);min-width:0}
+/* C5: at 1000 px the two dense grids used to get an inner horizontal
+   scrollbar inside a 940 px column -- a nested scroll region fighting the
+   main scroll. The second column reflows below instead. */
+@media(max-width:1100px){.cols.a,.cols.b{grid-template-columns:minmax(0,1fr)}}
+/* the one list in a card that owns the overflow */
+/* `scrollbar-gutter` keeps the last column of a table from disappearing
+   under the scrollbar the list grows when it overflows. */
+.scrollin{max-height:var(--h,360px);overflow-y:auto;overflow-x:hidden;
+  scrollbar-gutter:stable}
+
+/* what the page becomes once the sorter has stopped. One sentence at a
+   readable width and nothing to press: every control on the page talked to a
+   server that is no longer there. */
+.stopped{max-width:56ch;margin:16vh auto;padding:0 var(--s6);font-size:15px;
+  line-height:1.6;color:var(--ink-2)}
+
+
+.section-head{margin:var(--s6) 0 var(--s3)}
+.section-head:first-child{margin-top:var(--s1)}
+.lede{color:var(--ink-2);font-size:13px;max-width:78ch;margin-top:var(--s1)}
+.hint{color:var(--ink-3);font-size:12px}
+.row{display:flex;align-items:center}
+.row.gap{gap:var(--s2);flex-wrap:wrap;margin-top:var(--s3)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--s6);align-items:start}
+.filters{display:flex;gap:var(--s4);margin-top:var(--s2)}
+.check{display:flex;align-items:center;gap:var(--s2);font-size:12px;
+  color:var(--ink-2);cursor:pointer;min-height:26px}
+.check.big{font-size:13px;color:var(--ink);margin:var(--s3) 0}
+input[type=checkbox]{accent-color:var(--amber);width:16px;height:16px;flex:none}
+
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:30px;
+  padding:0 var(--s3);background:var(--surface-2);border:1px solid var(--line-2);
+  color:var(--ink);border-radius:var(--r);cursor:pointer;font-size:13px;
+  font-weight:500;transition:.12s;text-decoration:none}
+.btn:hover{border-color:var(--ink-3);background:var(--surface-3)}
+/* one primary per screen, and it is the only flat amber on the page */
+.btn.primary{background:var(--amber);border-color:#C9861A;color:var(--amber-ink);
+  font-weight:650}
+.btn.primary:hover{background:#FFBE5C;border-color:#C9861A}
+/* destructive: outlined, because a solid red button beside a solid amber one
+   reads as two primaries */
+.btn.danger{background:transparent;border-color:rgba(255,123,123,.5);
+  color:var(--danger-ink)}
+.btn.danger:hover{background:rgba(255,123,123,.1);border-color:var(--danger)}
+.btn.solid-danger{background:#E05252;border-color:#A82C2C;color:#2A0606;font-weight:650}
+.btn.danger:disabled,.btn.solid-danger:disabled{background:var(--surface);
+  border-color:var(--line);color:var(--ink-3);cursor:not-allowed}
+.btn.ghost{background:transparent}
+.btn.quiet{background:transparent;border-color:transparent;color:var(--ink-2)}
+.btn.quiet:hover{border-color:var(--line-2);color:var(--ink)}
+.btn.tiny{min-height:26px;padding:0 var(--s2);font-size:12px;border-radius:var(--r)}
+/* a disabled button has to look disabled: #add-rule spends most of its life
+   this way, and a live-looking button that does nothing reads as a bug */
+.btn:disabled{background:var(--surface);border-color:var(--line);
+  color:var(--ink-3);cursor:not-allowed}
+.btn:disabled:hover{background:var(--surface);border-color:var(--line)}
+
+/* a state, never a button */
+.pill{display:inline-flex;align-items:center;gap:6px;min-height:24px;
+  padding:0 var(--s2);border-radius:999px;font-size:12px;
+  border:1px solid var(--line-3);color:var(--ink-2);white-space:nowrap}
+/* The three coloured borders measured 2.56, 2.71 and 2.61 against
+   `--surface` at their old alphas, so they are raised to .6 / .62 / .65:
+   4.21, 4.35 and 3.68. A pill's shape is the only thing that says "this is a
+   state and not a button". */
+.pill.ok{border-color:rgba(91,212,138,.6);color:var(--ok-ink);
+  background:rgba(91,212,138,.08)}
+.pill.warn{border-color:rgba(230,188,99,.62);color:var(--warn-ink);
+  background:rgba(230,188,99,.09)}
+.pill.bad{border-color:rgba(255,123,123,.65);color:var(--danger-ink);
+  background:rgba(255,123,123,.09)}
+.pill.flag{font-family:var(--mono)}
+
+/* --------------------------------------------------------- extractors */
+.extractors{display:flex;gap:var(--s4);align-items:flex-start;flex-wrap:wrap}
+.extractor-summary{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s4) var(--s4);min-width:230px}
+.extractor-summary .big{font-size:30px;font-weight:600;letter-spacing:-.02em;
+  line-height:1.1}
+.extractor-summary .big small{font-size:15px;color:var(--ink-2);font-weight:400}
+.core-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));
+  gap:var(--s2);flex:1;min-width:420px}
+.core{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:var(--s2) var(--s2)}
+.core .n{font-size:12px;color:var(--ink-3);text-transform:uppercase;
+  letter-spacing:.06em}
+.core .v{font-size:13px;font-weight:600;margin:2px 0 6px}
+.core.hot{border-color:rgba(255,123,123,.45)}
+.core.hot .v{color:var(--danger-ink)}
+/* One row per substance a core holds: a core mines gas as well as Chromatic
+   Metal, and the four gases used to exist only in the card's `title`. */
+.core-sub{margin:6px 0 0}
+.core-subname{display:block;font-size:12px;color:var(--ink-2);overflow-wrap:anywhere}
+.core-subval{display:block;font-size:13px;font-weight:600}
+.core-subval .of{font-weight:400;color:var(--ink-3);font-size:12px}
+.core-sub .fill{margin-top:3px}
+/* A3: 11px, under the floor the comment at the head of this file states. */
+.core-where{margin-top:var(--s2);font-size:12px}
+
+/* ---------------------------------------------------------- containers */
+.section-title{font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);margin:var(--s6) 0 var(--s2);display:flex;align-items:center;
+  gap:var(--s2)}
+.section-title::after{content:"";flex:1;height:1px;background:var(--line)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));
+  gap:var(--s3);align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3) var(--s4);cursor:pointer;
+  transition:border-color .12s;position:relative}
+.card:hover{border-color:var(--line-2)}
+.card.empty{border-style:dashed;background:transparent}
+.card.empty .cname{color:var(--ink-2)}
+.card.full{border-color:rgba(255,123,123,.5)}
+.card.open{border-color:var(--amber-dim)}
+.chead{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:var(--s2)}
+.cname{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis}
+/* U9: a player who renames a chest "Raw Resources" makes six destinations
+   read exactly like categories, so the container's own key goes after the
+   name -- with a gap, wherever the layout does not already provide one. */
+.ckey{font-family:var(--mono);font-size:12px;color:var(--ink-3);
+  white-space:nowrap;margin-left:6px}
+.cmeta .ckey,.tidy-list .ckey,.cb-row .ckey{margin-left:0}
+.cmeta{display:flex;gap:var(--s2);font-size:12px;color:var(--ink-3);margin-top:2px}
+/* `in use`, `unallocated`, `empty`, `N out of place`: a border and a word,
+   so the border is the shape. 1.68 on `--line-2`, 3.33 on `--line-3`. */
+.tag{font-size:12px;padding:1px 6px;border-radius:var(--r);
+  border:1px solid var(--line-3);color:var(--ink-2);white-space:nowrap}
+.tag.full{border-color:rgba(255,123,123,.65);color:var(--danger-ink)}
+.fill{height:5px;border-radius:3px;background:#0A0E14;margin-top:var(--s2);
+  overflow:hidden;display:flex;border:1px solid rgba(255,255,255,.05)}
+.fill i{display:block;height:100%}
+.fillnum{display:flex;justify-content:space-between;font-size:12px;
+  color:var(--ink-3);margin-top:var(--s1)}
+.card-body{margin-top:var(--s3);border-top:1px solid var(--line);
+  padding-top:var(--s2);cursor:default}
+.bkt-group{margin-bottom:var(--s2)}
+.bkt-name{font-size:12px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);display:flex;align-items:center;gap:6px;margin-bottom:var(--s1)}
+.swatch{width:8px;height:8px;border-radius:2px;flex:none}
+.item{display:flex;justify-content:space-between;gap:var(--s2);padding:2px 0;
+  font-size:12px}
+.item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .am{color:var(--ink-2);flex:none}
+.item.unknown .nm{color:var(--ink-3);font-style:italic}
+
+/* ------------------------------------------------------------- routing */
+.routing{display:grid;grid-template-columns:300px 1fr;gap:var(--s4);
+  align-items:start}
+.droplist{min-height:44px;display:flex;flex-direction:column;gap:6px;
+  border-radius:var(--r);padding:var(--s1);transition:.12s}
+.droplist.over{background:rgba(255,176,58,.09);outline:1px dashed var(--amber-dim)}
+/* QA 2, item 9: every other border that is the whole of a thing's shape was
+   raised to `--line-3` and the chip was left on `--line-2` -- 1.56:1 for a
+   category chip and 1.68:1 for a save filter chip, against fills of
+   `--surface-2` on `--surface` that are themselves about 1.09:1 apart. The
+   chip was the last element on the page whose outline was invisible, and it
+   is a button: `--line-3` is 3.32:1 on `--surface` and 3.15:1 on
+   `--surface-2`, so both pass 1.4.11. */
+.chip{display:flex;align-items:center;gap:6px;background:var(--surface-2);
+  border:1px solid var(--line-3);border-radius:var(--r);padding:var(--s1) var(--s2);
+  cursor:grab;font-size:12px;user-select:none;min-height:26px;flex-wrap:wrap}
+.chip:active{cursor:grabbing}
+.chip.dragging{opacity:.35}
+/* B3: `margin-left:auto` on the *first* `.chip .count` was what left an
+   ordered list of nine sources sharing no left edge. It applies to a count
+   that trails its name, not to one that leads it. */
+.chip .count{margin-left:auto;color:var(--ink-3);font-size:12px}
+.chip .count:first-child{margin-left:0}
+.chip .x{background:none;border:0;color:var(--ink-3);cursor:pointer;
+  padding:var(--s1) 6px;font-size:14px;line-height:1}
+.chip .x:hover{color:var(--danger)}
+.chip .chip-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+/* C3: the select shared the chip's line instead of taking a full one of its
+   own, which is what made eleven categories a 1,200px shelf. */
+/* the `route to...` / `move to...` picker: a dashed border is the only thing
+   that says it is a control, so it is held to the same 3:1 as the `+`. */
+select.chip-route{flex:0 1 auto;max-width:172px;font-size:12px;
+  border-color:var(--line-3)}
+.chip.custom{border-style:dashed}
+.chip .ord{font-size:12px;color:var(--ink-2);border:1px solid currentColor;
+  border-radius:999px;padding:0 5px;margin-left:2px}
+.chip .routed-to{font-size:12px;color:var(--ink-2)}
+/* a routed category is dimmer, so the shade stays measurable */
+.chip.routed{background:var(--surface)}
+.chip.routed .chip-name{color:var(--ink-2)}
+.chip.routed:hover .chip-name{color:var(--ink)}
+.chip.unrouted{border-style:dashed}
+.chip .ckey{font-size:12px;color:var(--ink-3)}
+.routed-to{font-size:12px;color:var(--ink-2)}
+.routed-to.none{color:var(--warn-ink)}
+
+/* B3: a real table, with a 34px ordinal column, so nine sources share a left
+   edge and the used/valid figures line up under each other. */
+.sources .chip{display:grid;align-items:center;cursor:grab;
+  grid-template-columns:34px minmax(0,1fr) auto auto auto;gap:var(--s2)}
+.sources .chip .count{margin-left:0;text-align:left}
+.sources .chip .count:nth-child(3){text-align:right}
+
+/* C3: the tallest tile in a row no longer sets the height for the rest. */
+.store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));
+  gap:var(--s3);align-items:start}
+.store{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3)}
+.store.has{border-color:var(--line-2)}
+.store h4{margin:0 0 2px;font-size:13px;font-weight:600}
+.store .sub{font-size:12px;color:var(--ink-3);margin-bottom:var(--s2)}
+.store h4 .ckey{margin-left:6px;font-weight:400}
+.store .sub.bad{color:var(--danger-ink)}
+.store .sub.bad .fullword{font-weight:700;letter-spacing:.06em;
+  border:1px solid rgba(255,123,123,.5);border-radius:var(--r);padding:0 4px}
+
+.options{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3);display:flex;flex-direction:column;
+  gap:var(--s3)}
+/* B2: the control sits next to its label, not parked at the far right edge of
+   an 880px card. */
+.opt{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;min-width:0}
+.opt .optcol{flex:1 1 auto}
+.opt label{font-size:13px}
+.opt .hint{display:block}
+.opt input[type=number],.opt .inum{width:72px;flex:none}
+.optlabel{display:block;font-size:13px;min-width:0;overflow-wrap:anywhere}
+.optcol{display:flex;flex-direction:column;min-width:0}
+.optcol .optlabel{font-size:13px}
+
+/* ------------------------------- the small x that removes a row or a chip */
+.del{background:none;border:0;color:var(--ink-3);cursor:pointer;font-size:15px;
+  line-height:1}
+.del:hover{color:var(--danger)}
+.combo{position:relative;display:flex;flex:1 1 260px}
+.combo input{width:auto}
+.suggest{position:absolute;top:100%;left:0;z-index:50;background:var(--surface-2);
+  border:1px solid var(--line-2);border-radius:var(--r);margin-top:var(--s1);
+  max-height:280px;overflow:auto;min-width:330px}
+.suggest div{padding:6px var(--s3);cursor:pointer;font-size:12px;display:flex;
+  gap:var(--s2);align-items:center;min-height:26px}
+.suggest div:hover,.suggest div.sel{background:var(--surface-3)}
+.suggest .sid{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.suggest .sb{margin-left:auto;font-size:12px;color:var(--ink-3)}
+
+/* A1 (WCAG 2.2 `focus-not-obscured`): the save bar was
+   `position:fixed; right:28px; bottom:22px; z-index:60` and floated over
+   everything in the bottom-right quadrant for the whole scroll -- a keyboard
+   user tabbing down the rule list had focus land underneath it. It is the
+   section's own footer now: full width, sticky to the bottom of the scroll
+   area, a sibling of the content rather than an overlay over it. */
+/* A1: no longer an overlay. `.stagefoot` puts it in the flow below the
+   scroll area, so a control can never end up underneath it. */
+.savebar{flex-wrap:wrap}
+.savebar .confirm,.savebar #config-conflict:not(:empty){flex:1 1 100%}
+#config-conflict:empty{display:none}
+#dirty-note{font-size:12px;color:var(--amber)}
+
+/* -------------------------------------------------------------- issues
+   E1: the sentence leads with "Warning in <where>." in bold, not with a
+   monospace JSON path that reads as an error code. */
+.issue{display:flex;gap:var(--s2);align-items:center;padding:var(--s2) var(--s3);
+  border-radius:var(--r);font-size:12px;margin-bottom:6px;border:1px solid}
+.issue.error{background:rgba(255,123,123,.08);border-color:rgba(255,123,123,.32);
+  color:var(--danger-ink)}
+.issue.warning{background:rgba(230,188,99,.08);border-color:rgba(230,188,99,.3);
+  color:var(--warn-ink)}
+.issue .where{font-weight:600;flex:none;color:inherit}
+.issue .imsg{flex:1}
+.fixbtn{flex:none}
+.ilist{color:var(--ink-2);margin-top:3px}
+
+/* ---------------------------------------------------------------- plan */
+.plan-group{margin:var(--s4) 0}
+.prow{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s2) var(--s3);margin-bottom:6px}
+.prow.move{border-left:3px solid var(--amber-dim)}
+.prow.merge{border-left:3px solid var(--line-2)}
+.prow.tidy{border-left:3px solid var(--ok)}
+.prow.skip{border-left:3px solid var(--line-2);background:transparent}
+.prow.refuse{border-left:3px solid var(--danger)}
+.pline{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.pop{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:650;
+  flex:none;color:var(--ink-3)}
+.prow.move .pop{color:var(--ink-2)}
+.prow.tidy .pop{color:var(--ok)}
+.prow.refuse .pop{color:var(--danger)}
+.pitem{font-weight:600}
+.parrow{color:var(--ink-3)}
+.pqty{font-weight:600}
+.pdetail{margin-top:6px;font-size:12px;color:var(--ink-2);display:flex;
+  flex-direction:column;gap:3px}
+.why{font-size:12px;color:var(--ink-3);margin-top:6px;padding-left:var(--s2);
+  border-left:2px solid var(--line-2)}
+.why b{color:var(--ink-2);font-weight:500}
+.prow .ph{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.prow .ph b{font-weight:600}
+.prow .ph .arrow{color:var(--ink-3);flex:none}
+.prow .ph .hint{margin-left:auto;flex:none}
+
+details.fold{margin:var(--s3) 0}
+details.fold>summary{cursor:pointer;font-size:12px;color:var(--ink-2);
+  padding:var(--s2) 0;list-style:none;display:flex;align-items:center;
+  gap:var(--s2);min-height:26px}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary::before{content:"\25B8" / "";color:var(--ink-3)}
+details.fold[open]>summary::before{content:"\25BE" / ""}
+details.fold>summary:hover{color:var(--ink)}
+
+.diffs{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+  gap:var(--s3);align-items:start}
+.diff{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3)}
+.diff h4{margin:0 0 2px;font-size:13px}
+.diff .sub{font-size:12px;color:var(--ink-3);margin-bottom:var(--s2)}
+.dline{display:grid;grid-template-columns:1fr auto auto auto;gap:var(--s2);
+  font-size:12px;padding:2px 0;align-items:baseline}
+.dline .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dline .a,.dline .b{color:var(--ink-3);min-width:52px;text-align:right}
+.dline .b{color:var(--ink)}
+.dline.up .b{color:var(--ok)}
+.dline.down .b{color:var(--danger)}
+.dline .ar{color:var(--ink-3)}
+
+/* --------------------------------------------------------------- apply */
+.apply-card{background:var(--surface);
+  border:1px solid rgba(255,123,123,.35);border-radius:var(--r2);
+  padding:var(--s4);margin-top:var(--s6)}
+.gates{display:flex;flex-direction:column;gap:var(--s1);margin:var(--s3) 0}
+.gate{display:flex;gap:var(--s2);align-items:flex-start;font-size:12px;
+  color:var(--ink-2);padding:2px 0}
+.gate .dot{width:16px;flex:none;text-align:center;font-weight:700;color:var(--ok)}
+.gate.bad .dot{color:var(--danger)}
+.gate .txt{color:var(--ink-2)}
+.steps{margin-top:var(--s4);border:1px solid var(--line);border-radius:var(--r);
+  overflow:hidden}
+/* Scoped to `.steps`, which is the only thing `stepList` puts one in. As a
+   bare `.step` this block also matched the rail's own steps -- same class,
+   same specificity, 370 lines later, so it won -- and turned each of them
+   into a `22px 200px 1fr` grid inside a 186 px box. The third column got
+   0 px, and in the rail the third column is the step's count: `29
+   containers`, `13 routed`, `12 moves`, `5,133`, and under Apply the hint
+   `tick to enable`. Measured clientWidth 0 against scrollWidth 73 at every
+   window size, on the one line that says why Apply is disabled. */
+/* QA 3: and the third column was the other half of the same defect. A fixed
+   200 px label column inside the Apply card's 307 px of step width left the
+   detail 41 px, which wrapped `nothing else changed: 40 changed paths ...`
+   to two-to-four characters a line, made one step 499 px tall and the
+   14-step report 3,688 px. In the Backups card the restore log came out
+   `N / MS / .ex / e`, one character a line.
+   Two columns, not three: the glyph, then the label above its detail. A
+   label is two or three words and a detail is a sentence, so they do not
+   belong in one row at any width this card has -- and stacking them is the
+   one shape that cannot produce a narrow column, whatever the card is
+   resized to. */
+.steps .step{display:grid;grid-template-columns:22px minmax(0,1fr);
+  column-gap:var(--s2);row-gap:2px;
+  padding:6px var(--s3);border-bottom:1px solid var(--line);font-size:12px;
+  align-items:baseline}
+.steps .step:last-child{border-bottom:0}
+.steps .step .s{font-weight:700;color:var(--ink-3)}
+.steps .step.ok .s{color:var(--ok)}
+.steps .step.fail .s{color:var(--danger)}
+.steps .step .lbl{color:var(--ink)}
+.steps .step .det{grid-column:2;color:var(--ink-2);overflow-wrap:break-word}
+
+.toast{position:fixed;left:50%;bottom:var(--s6);transform:translateX(-50%);
+  background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r2);padding:var(--s2) var(--s4);font-size:12px;z-index:100;
+  display:flex;align-items:center;gap:var(--s3)}
+.toast.bad{border-color:rgba(255,123,123,.5);color:var(--danger-ink)}
+.toast.good{border-color:rgba(91,212,138,.45);color:var(--ok-ink)}
+.toast-act{flex:none}
+
+/* ---- the plan detail is collapsed: apply should not be 60 rows away ---- */
+.plan-detail{margin-top:var(--s4);border-top:1px solid var(--line)}
+.plan-detail>summary{cursor:pointer;padding:var(--s2) 2px;font-weight:600;
+  list-style:none;display:flex;gap:var(--s2);align-items:center;min-height:30px}
+.plan-detail>summary::-webkit-details-marker{display:none}
+.plan-detail>summary::before{content:"\25B8" / "";color:var(--ink-3)}
+.plan-detail[open]>summary::before{content:"\25BE" / ""}
+.plan-detail>summary:hover{color:var(--ink)}
+
+/* E3: six tiles for the non-zero facts, moves in amber as the lead, refused
+   in red. The zeros are one grey line, not six equal boxes. */
+.plan-tally{display:flex;flex-wrap:wrap;gap:var(--s2);margin:var(--s3) 0}
+.plan-tally .t{flex:1 1 118px;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3);min-width:110px}
+.plan-tally .t b{display:block;font-size:24px;font-weight:600;line-height:1.1}
+.plan-tally .t span{display:block;font-size:12px;color:var(--ink-3);margin-top:2px}
+.plan-tally .t.lead b{color:var(--amber)}
+.plan-tally .t.warn{border-color:rgba(230,188,99,.4)}
+.plan-tally .t.bad{border-color:rgba(255,123,123,.4)}
+.plan-tally .t.bad b{color:var(--danger)}
+.zeros{font-size:12px;color:var(--ink-3);padding:var(--s2) 0}
+
+/* ---- stacks sitting in a container its buckets do not name ---- */
+.tag.stray{border-color:rgba(255,123,123,.65);color:var(--danger-ink)}
+.remit{border-bottom:1px solid var(--line);padding-bottom:var(--s2);
+  margin-bottom:var(--s2)}
+.remit .stray-why{color:var(--warn-ink)}
+.item.stray-unrouted,.item.stray-not_source{box-shadow:inset 2px 0 0 var(--danger);
+  padding-left:6px}
+.item.stray-elsewhere{box-shadow:inset 2px 0 0 var(--warn);padding-left:6px}
+.item.stray-never .nm{color:var(--ink-3)}
+/* out of place: a glyph with a title, so the meaning is not the colour */
+.item .nm .glyph{color:var(--danger);margin-right:var(--s1);font-size:12px}
+.item.stray-elsewhere .nm .glyph{color:var(--warn)}
+
+/* ---------------------------------------------------------- items page */
+#item-table{margin-top:var(--s3)}
+.it-head,.it-row{display:grid;
+  grid-template-columns:28px minmax(180px,2fr) minmax(120px,1fr) 90px 230px 60px 1.4fr;
+  gap:var(--s2);align-items:center}
+.it-head{font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ink-3);padding:0 6px var(--s2);border-bottom:1px solid var(--line);
+  font-weight:600}
+.it-row{padding:6px;border-bottom:1px solid var(--line)}
+.it-row:hover{background:var(--surface-2)}
+.it-row.overridden{box-shadow:inset 3px 0 0 var(--link)}
+.it-name b{font-weight:600}
+.it-id{font-family:var(--mono);font-size:12px;color:var(--ink-2);display:flex;
+  gap:6px;align-items:center}
+.it-bucket{width:100%;min-width:0}
+.it-orig{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+.it-cell{min-width:0;overflow-wrap:anywhere}
+.linkbtn{background:none;border:none;color:var(--link);cursor:pointer;padding:2px 0;
+  font-size:12px;text-decoration:underline;min-height:24px}
+.linkbtn:hover{color:var(--ink)}
+#ib-bulk{margin-top:var(--s3)}
+.cb-row{display:grid;grid-template-columns:14px minmax(160px,1fr) 140px 90px 2fr 30px;
+  gap:var(--s2);align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.cb-row.custom{border-style:dashed;border-bottom-style:solid}
+.row.wrap{flex-wrap:wrap}
+.it-bucket.custom{border-style:dashed !important}
+
+/* ---- click-to-filter chips on the items page ---- */
+.chipbar{display:flex;flex-wrap:wrap;gap:6px;margin:var(--s2) 0}
+.fchip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--r);
+  padding:0 var(--s2);font-size:12px;user-select:none;min-height:26px;
+  color:var(--ink)}
+.fchip:hover{border-color:var(--ink-3)}
+.fchip.on{background:rgba(255,176,58,.13);border-color:var(--amber-dim);
+  color:var(--ink)}
+.fchip .count{color:var(--ink-3);font-size:12px}
+.fchip .swatch{width:8px;height:8px;border-radius:2px}
+.fchip.custom{border-style:dashed}
+.field.compact.hidden{display:none}
+
+/* A5: `overflow:hidden; white-space:nowrap` with no `text-overflow` cut item
+   names mid-glyph at 1000px, with no way to recover the rest. */
+.ir-item{background:none;border:1px solid transparent;border-radius:var(--r);
+  padding:2px var(--s1);text-align:left;color:inherit;cursor:pointer;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;display:block;
+  min-width:0}
+.ir-item:hover{border-color:var(--line-2);background:var(--surface-2)}
+.ir-item .nm2{font-weight:600}
+.ir-item .id2{font-size:12px;color:var(--ink-3);margin-left:6px;
+  font-family:var(--mono)}
+.ir-item.unknown{border-color:rgba(255,123,123,.5)}
+.isel{background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r);padding:2px var(--s1);color:inherit;font-size:12px;
+  width:100%;min-height:26px}
+/* the rule's verb is the one other place amber is allowed */
+.isel.mode{color:var(--amber);font-weight:600;background:var(--surface-3)}
+.inum{width:100%;background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r);padding:2px var(--s1);color:inherit;text-align:center;
+  font-size:12px;min-height:26px}
+.inum.tiny{width:66px}
+.ir-dash{font-size:12px;color:var(--ink-3);text-align:center}
+.ir-live{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.ir-live.act{color:var(--ink-2)}
+.ir-tools{display:flex;gap:2px;justify-content:flex-end}
+.iconbtn{background:none;border:none;color:var(--ink-2);cursor:pointer;
+  font-size:14px;line-height:1;padding:var(--s1) 6px;border-radius:var(--r)}
+.iconbtn:hover{color:var(--ink);background:var(--surface-3)}
+.iconbtn.del:hover{color:var(--danger-ink)}
+.ir-extra{display:flex;gap:var(--s4);align-items:flex-end;flex-wrap:wrap;
+  padding:var(--s3);margin:2px var(--s1) var(--s2) 32px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:var(--r);font-size:12px;
+  color:var(--ink-2)}
+.ir-extra.hidden{display:none}
+.ic{display:inline-flex;gap:6px;align-items:center}
+.ic.grow{flex:1 1 200px}
+.inote{flex:1;background:var(--surface-2);border:1px solid var(--line-2);
+  border-radius:var(--r);padding:2px 6px;color:var(--ink);font-size:12px}
+.ir-issue{font-size:12px;padding:var(--s1) var(--s2) 6px 32px}
+.ir-issue.error{color:var(--danger-ink)}
+.ir-issue.warning{color:var(--warn-ink)}
+.cellwarn{font-size:12px;color:var(--warn-ink);margin-top:var(--s1)}
+.paneltell{color:var(--ink-2);margin-top:6px}
+
+/* ---- folded explainer above a table ---- */
+.helpbox{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);margin:var(--s3) 0}
+.helpbox>summary{cursor:pointer;padding:var(--s2) var(--s3);font-size:13px;
+  font-weight:600;color:var(--ink);list-style:none;min-height:30px;
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.helpbox>summary::-webkit-details-marker{display:none}
+/* U30: empty alternative text, so the glyph is not read as part of the
+   disclosure's accessible name. */
+.helpbox>summary::before{content:"\25B8  " / "";color:var(--ink-3)}
+.helpbox[open]>summary::before{content:"\25BE  " / ""}
+.helpbox>summary:hover{color:var(--ink)}
+.help-body{padding:2px var(--s4) var(--s3);font-size:13px;line-height:1.6;
+  color:var(--ink-2);border-top:1px solid var(--line)}
+.help-body p{margin:var(--s2) 0}
+
+/* keep = a number and the container it guards, side by side */
+.keep-cell{display:flex;gap:var(--s1);align-items:center;flex-wrap:wrap}
+.keep-cell .inum{width:54px;flex:none}
+/* the second place 11px escaped the floor */
+.keep-cell .where{flex:1;min-width:0;font-size:12px}
+
+/* Number inputs: no spinners. They sit on top of the value in a 54px cell and
+   the values here are typed, never nudged one at a time. */
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* ---- the plan's per-destination lines, one per container it touches ---- */
+.plan-dests{display:flex;flex-direction:column;gap:3px;margin:var(--s3) 0 var(--s1);
+  padding-left:var(--s2);border-left:2px solid var(--line-2)}
+
+/* ---- the item picker popup: fixed to the viewport, placed by placePicker(),
+        which sets left/top/width and nothing else ---- */
+.picker-pop{position:fixed;margin-top:0;max-height:none;overflow:visible;
+  display:flex;flex-direction:column;gap:6px;padding:6px;z-index:70}
+.picker-pop>input{width:100%}
+/* .suggest div would otherwise make the list itself a flex row */
+.picker-pop .picker-list{display:block;padding:0;cursor:default;overflow:auto;
+  max-height:44vh}
+.picker-pop .picker-list .hint{display:block;padding:var(--s2) var(--s3)}
+
+/* ---- the add-a-rule box could not resolve what was typed ---- */
+#new-item-note.bad{color:var(--danger-ink)}
+
+/* =====================================================================
+   keyboard, click paths and the things that used to be opacity
+   ===================================================================== */
+
+/* One visible focus ring, on everything, in the page's own amber. The browser
+   default disappears entirely against this background. */
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;
+  border-radius:var(--r)}
+select:focus-visible,input:focus-visible{box-shadow:none}
+
+/* the container card's head is a button now, not a div with a handler */
+.ctoggle{display:block;width:100%;text-align:left;background:none;border:0;
+  padding:0;margin:0;color:inherit;font:inherit;cursor:pointer}
+.ctoggle:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.card:focus-within{outline-offset:2px}
+.card.open .chead,.card:focus-within .chead{padding:1px 0}
+
+/* up / down beside a source or a rule: the click path for every drag */
+.ord-btns{display:flex;gap:2px}
+.ir-ord .ord-btns{flex-direction:column}
+.ir-ord .ordn{font-variant-numeric:tabular-nums}
+/* an arrow with nowhere to go keeps its place in the Tab order (U2), so it is
+   marked rather than hidden, and it says so in its own name. Both states are
+   real tokens: the contrast floor applies to a glyph a person has to read even
+   when pressing it does nothing. */
+.ordbtn{font-size:12px;line-height:1;padding:var(--s1) 6px;min-width:24px;
+  min-height:24px;color:var(--ink-2)}
+.ordbtn.inert,.ordbtn:disabled{color:var(--ink-3);cursor:default;
+  visibility:visible}
+.ordbtn.inert::after{content:""}
+
+/* U13: 45 of 50 buttons were under 24x24 CSS px. The glyphs stay the size they
+   were; the hit box does not. */
+button,.btn,.iconbtn,.chip .x,.del,.linkbtn,.fchip{min-height:24px}
+.iconbtn,.chip .x,.del{min-width:24px;display:inline-flex;align-items:center;
+  justify-content:center;padding:var(--s1) 6px}
+
+/* U18: the items grid is a grid, with a header that stays put. */
+#item-table[role="grid"]{position:relative}
+.it-head{position:sticky;z-index:20;background:var(--bg);
+  top:calc(var(--topbar-h,60px) + var(--tabs-h,41px));padding-top:var(--s2)}
+.it-row{outline-offset:-2px}
+.it-row:focus-visible{outline:2px solid var(--focus);background:var(--surface-2)}
+/* V1: a category cell in edit mode says so, because while it is not in edit
+   mode the arrow keys belong to the grid and not to the control */
+.it-bucket.editing{outline:2px solid var(--focus);outline-offset:1px;
+  border-color:var(--focus) !important}
+
+/* U17: the tidy picker is a checkbox list, not a <select multiple> */
+.tidy-opt{flex-direction:column;align-items:stretch;gap:var(--s2)}
+.tidy-head{display:flex;flex-direction:column}
+.tidy-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:var(--s1) var(--s3);max-height:210px;overflow:auto;padding:6px var(--s2);
+  border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.tidy-list .check{display:flex;align-items:center;gap:6px;font-size:12px;
+  min-height:24px}
+.tidy-list .ckey{margin-left:auto}
+
+/* the guided empty state on the Configuration tab */
+.guide{background:var(--surface);border:1px solid var(--amber-dim);
+  border-radius:var(--r2);padding:var(--s4);margin:var(--s1) 0 var(--s4)}
+.guide h2{color:var(--amber)}
+.guide-steps{list-style:none;margin:var(--s3) 0;padding:0;display:flex;
+  flex-direction:column;gap:var(--s2)}
+.guide-steps li{display:flex;align-items:baseline;gap:var(--s2);font-size:13px;
+  color:var(--ink)}
+.guide-steps .gn{flex:none;width:20px;height:20px;border-radius:999px;
+  background:var(--surface-2);border:1px solid var(--line-2);color:var(--amber);
+  font-size:12px;font-weight:650;text-align:center;line-height:19px}
+
+/* an inline yes/no, on the row it is about */
+.confirm{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;
+  background:rgba(230,188,99,.1);border:1px solid rgba(230,188,99,.4);
+  border-radius:var(--r);padding:var(--s2) var(--s3);margin:6px 0;font-size:13px;
+  color:var(--ink)}
+.confirm .cq{flex:1 1 320px;color:var(--ink)}
+.confirm .confirm-yes{background:#E05252;border-color:#A82C2C;color:#2A0606;
+  font-weight:650}
+/* QA 3: this rule sits 550 lines after `.btn:disabled`, at the same
+   specificity, so it won: measured disabled and enabled, `yes, do it` was
+   the same red, the same ink and `opacity: 1`, and only `cursor` differed.
+   A destructive button that looks live and does nothing is the worst
+   version of that bug, so it takes the treatment `#apply:disabled` gets. */
+.confirm .confirm-yes:disabled{background:var(--surface);
+  border-color:var(--line);color:var(--ink-3);cursor:not-allowed}
+/* the reason it is off, on its own line inside the box: a `title` on a
+   disabled button reaches nobody (D2), and Apply already says this. */
+.confirm .cwhy{flex:1 1 100%;margin:0}
+
+/* what a Fix button points at, for two seconds */
+.pulse{animation:pulse 1s ease-in-out 4;outline:1px solid var(--amber-dim)}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,176,58,0)}
+  50%{box-shadow:0 0 0 3px rgba(255,176,58,.55)}
+}
+
+.field.grow{flex:1 1 220px}
+.field.grow>input,.field.grow>select{flex:1;min-width:0}
+
+/* =====================================================================
+   the Settings tab, the health panel, the backups card
+   ===================================================================== */
+
+/* one field: label and control on a line, the sentence from settings.py under
+   it, at a size that is meant to be read */
+.setfield{background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3);margin-bottom:var(--s3)}
+/* a flag-held field is visibly held: recessed surface, not a dashed border */
+.setfield.over{background:var(--surface-2)}
+.setrow{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap}
+.setlabel{font-size:13px;font-weight:600;flex:0 0 200px}
+.setrow .setpath{flex:1 1 300px;min-width:0}
+.setrow .inum{width:110px;flex:none}
+.setdesc{color:var(--ink-2);font-size:12px;margin-top:6px;max-width:78ch}
+.setover{color:var(--ink-2);font-size:12px;margin-top:6px}
+.setfield .hint{display:block;margin-top:var(--s1)}
+#settings-fields{display:grid;gap:var(--s3);
+  grid-template-columns:repeat(auto-fill,minmax(400px,1fr));align-items:start}
+.setfield{max-width:none}
+
+/* what the "check" button found */
+.setfound{margin-top:var(--s2)}
+.setfound .hint{display:block;margin:var(--s1) 0}
+.foundrow{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;
+  padding:var(--s1) 0;border-top:1px solid var(--line)}
+
+/* the health panel: two columns, the value selectable */
+.hdl{display:grid;grid-template-columns:200px 1fr;gap:3px var(--s4);
+  margin:var(--s3) 0 0;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3) var(--s4);max-width:120ch}
+.hdl dt{font-size:12px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink-3)}
+.hdl dd{margin:0;font-size:12px;color:var(--ink);font-family:var(--mono);
+  word-break:break-word}
+
+/* the plain-text form of the same block. Off screen rather than display:none,
+   because a text box that is not rendered cannot be selected and copied. */
+.offscreen{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+
+/* a backup row reuses the plan row, and the confirmation wraps onto its own
+   line inside it. The cyan that used to mark it is retired: the row says
+   "backup" in words. */
+.prow.backup{border-left:3px solid var(--line-2)}
+.prow.backup .pop{color:var(--ink-2)}
+.prow.backup .pqty{color:var(--ink-2)}
+.prow.backup .pdetail{font-family:var(--mono)}
+.pline .confirm{flex:1 1 100%}
+.tag.hashok{border-color:rgba(91,212,138,.5);color:var(--ok-ink)}
+#restore-out{margin:var(--s3) 0}
+.undo-out:empty{display:none}
+
+/* the gate lines' "what this means". A link is a pointer target too. */
+.gatedoc{color:var(--link);white-space:nowrap;display:inline-flex;
+  align-items:center;min-height:24px;margin-left:auto}
+.gatedoc:hover{color:var(--ink)}
+
+/* U21: every sticky-to scroll landed behind the sticky chrome. The two bars
+   measure themselves into --topbar-h / --tabs-h already, so the scroll offset
+   is stated once, for fragment links, Find-then-Enter and every
+   `scrollIntoView({block:"start"})` on the page. */
+html{scroll-padding-top:calc(var(--topbar-h,60px) + var(--tabs-h,41px) + 14px)}
+.section-head,.store,.card,.helpbox,.apply-card,.it-row,
+#options,#item-rules,#custom-buckets-head,.chip,.rule{
+  scroll-margin-top:calc(var(--topbar-h,60px) + var(--tabs-h,41px) + 14px)}
+
+/* 3.5: the save's description, its stamp and its two warning lines were a
+   73 px bar of their own under the header. They are the header's second line
+   and two pills now, so the only rule left here is the banner's. */
+#save-banner .banner{margin:0}
+
+/* the chip bars: the container filters, and a category chip in a table cell */
+.chipwrap{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+
+/* One vessel, its grids inside it. The game shows General / Cargo / Technology
+   as tabs on one ship; the save keeps three sibling nodes and this page used
+   to show every one as a peer card.
+   And one *box*: a heading over two bordered cards is still two entries,
+   which is the complaint -- each card had its own border, its own fill bar,
+   its own `0 / 0 cells` and its own disclosure button -- and an exocraft,
+   which has one grid, looked materially different from a ship. The box is the
+   vessel; the grids inside it are rows of it, separated by a hairline. */
+.vessel{display:flex;flex-direction:column;min-width:0;
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r2);padding:var(--s3) var(--s4)}
+.vessel:hover{border-color:var(--line-2)}
+.vhead{display:flex;align-items:center;gap:var(--s2);min-width:0;
+  padding-bottom:var(--s1)}
+.vname{font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+  font-weight:600;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.vgrids{display:flex;flex-direction:column;min-width:0}
+.vgrids>.card.open{grid-column:auto}
+/* A grid inside a vessel keeps the card's contents and gives up its chrome:
+   no border of its own, no background, no radius. `full` and `open` are
+   carried by the word in the tag and by the disclosure, which is where a
+   player reads them anyway. */
+.card.ingrid{background:transparent;border:0;border-radius:0;
+  padding:var(--s2) 0}
+.card.ingrid:hover{background:transparent}
+.card.ingrid+.card.ingrid{border-top:1px solid var(--line)}
+.card.ingrid.empty{border-style:none;background:transparent}
+
+/* U23: an open card's head overflowed its own border on both edges. */
+.card{overflow:visible}
+.card.open{grid-column:span 2}
+.chead{flex-wrap:wrap;min-width:0}
+.chead>div{min-width:0}
+@media (max-width:900px){.card.open{grid-column:span 1}}
+
+/* ---- narrow windows ----
+   C5: the two dense grids used to get an inner horizontal scrollbar inside a
+   940 px column -- a nested scroll region fighting the main scroll. Neither
+   is a fixed grid any more: the Items table shares the section's own scroll
+   and a rule is a sentence that wraps. The second column of a `.cols` reflows
+   below (see the rule beside `.cols.b`), so nothing goes sideways. */
+@media (max-width:1100px){
+  .split{grid-template-columns:1fr}
+  header.app{gap:var(--s3);padding:0 var(--s3)}
+  .hstat span{display:none}
+}
+
+/* =====================================================================
+   The `?` that replaced 34 passages (§5), and the controls those passages
+   became: a pager, a lock pill, a unit suffix, a grouped form.
+   ===================================================================== */
+
+/* A4: a fact that is genuinely secondary hangs off a focusable button, so the
+   sentence is reachable by Tab and by touch, not only by hover. */
+/* The mockups draw this at 18x18 with an 11px glyph. Both are under this
+   project's own floors -- 12px text, 24x24 targets -- and the floors win, so
+   it is 24x24 with a 12px glyph here. */
+.help{width:24px;height:24px;min-height:24px;min-width:24px;border-radius:999px;
+  border:1px solid var(--line-2);background:transparent;color:var(--ink-2);
+  font:600 12px/1 var(--sans);display:inline-grid;place-items:center;
+  cursor:help;flex:none;padding:0;vertical-align:middle}
+.help:hover{color:var(--ink);border-color:var(--ink-3)}
+/* pressing it prints the sentence, because a `title` is hover-only */
+.helpnote{flex:1 1 100%;margin:var(--s1) 0 0;padding:var(--s2) var(--s3);
+  font-size:12px;color:var(--ink-2);background:var(--surface-2);
+  border:1px solid var(--line-2);border-radius:var(--r);max-width:78ch}
+.guidelink{font-size:12px;margin-left:var(--s2)}
+
+/* a flexible gap, so a control can be pushed to the end of its row without
+   `justify-content:space-between` breaking label/control proximity (B2) */
+.tablespacer{flex:1 1 auto;min-width:var(--s2)}
+
+/* C2: `1-50 of 5,133  <  >` */
+.pager{display:flex;align-items:center;gap:var(--s2);margin-left:auto}
+.pager .hint{white-space:nowrap}
+.btn.ico{width:26px;min-width:26px;padding:0;justify-content:center}
+
+/* a number field and the unit it is counted in */
+.unit{display:inline-flex;align-items:center;flex:none}
+.unit>input,.unit>.inum{border-radius:var(--r) 0 0 var(--r);width:72px;
+  text-align:right}
+.unit .suf{min-height:28px;display:grid;place-items:center;padding:0 var(--s2);
+  font-size:12px;color:var(--ink-3);border:1px solid var(--line-2);
+  border-left:0;border-radius:0 var(--r) var(--r) 0;background:var(--surface)}
+
+/* the run options, in four named groups */
+.optgroup{display:flex;flex-direction:column;gap:var(--s2)}
+.optgroup h3{margin:var(--s2) 0 0}
+
+/* a card with a head and a body: the plan's before/after table lives in one */
+.card.plain,.card>.hd,.card>.bd{cursor:default}
+.card>.hd{display:flex;align-items:center;gap:var(--s2);
+  padding:var(--s2) var(--s3);border-bottom:1px solid var(--line)}
+.card>.bd{padding:var(--s2) var(--s3)}
+.card>.bd.flush{padding:0}
+.card.dangerbox{border-color:rgba(255,123,123,.35);
+  background:rgba(255,123,123,.04);padding:var(--s3);cursor:default}
+.card.warnbox{border-color:rgba(230,188,99,.4);background:rgba(230,188,99,.06)}
+
+/* a message the server owns: shown verbatim, framed by us */
+.msg{display:flex;gap:var(--s2);align-items:flex-start;padding:var(--s2) var(--s3);
+  border-radius:var(--r);font-size:12px;border:1px solid;margin-bottom:var(--s2)}
+.msg.warn{background:rgba(230,188,99,.08);border-color:rgba(230,188,99,.3);
+  color:var(--warn-ink)}
+.msg.bad{background:rgba(255,123,123,.08);border-color:rgba(255,123,123,.32);
+  color:var(--danger-ink)}
+
+/* E5: one table, tabular figures, the change column signed and coloured */
+table.plan-diff{width:100%;border-collapse:collapse}
+table.plan-diff th{font-size:12px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);text-align:left;
+  padding:var(--s2) var(--s3);border-bottom:1px solid var(--line);
+  white-space:nowrap}
+table.plan-diff td{padding:var(--s1) var(--s3);border-bottom:1px solid var(--line);
+  vertical-align:middle}
+table.plan-diff tr:last-child td{border-bottom:0}
+table.plan-diff tbody tr:hover{background:var(--surface-2)}
+table.plan-diff .r{text-align:right}
+table.plan-diff .c{text-align:center;color:var(--ink-3)}
+table.plan-diff .up{color:var(--ok)}
+table.plan-diff .down{color:var(--danger)}
+.tnum{font-variant-numeric:tabular-nums;white-space:nowrap}
+.fill.wide{min-width:110px;margin-top:0}
+
+/* C2: the table body is a fixed height with a sticky header, so the row count
+   stops mattering and the section stays one screen. */
+#item-table[role="grid"]{max-height:428px;overflow:auto;border:1px solid var(--line);
+  border-radius:var(--r2);padding:0 var(--s2)}
+#item-table .it-head{top:0;background:var(--surface);
+  scroll-margin-top:0}
+.cbhit{display:inline-flex;align-items:center;justify-content:center;
+  min-width:24px;min-height:24px;cursor:pointer}
+
+/* §3.4 the grouped settings form */
+.setgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+  gap:var(--s3);align-items:start;margin:var(--s2) 0 var(--s4)}
+.set{display:flex;flex-direction:column;gap:var(--s1);padding:var(--s3);
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r2)}
+.set .top{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+/* SC 2.5.8: the label is the checkbox's real pointer target, so it has to
+   clear 24px in both directions on its own. */
+.set .top .name{font-weight:600;font-size:13px;min-height:24px;display:flex;
+  align-items:center;cursor:pointer}
+.optlabel{min-height:24px;display:flex;align-items:center;cursor:pointer}
+.set input[type=text]{width:100%}
+.set .under{font-size:12px;color:var(--ink-3)}
+/* a flag-held field is visibly held: a recessed surface, the pill in the head
+   and the control disabled. No `opacity`, because that is on text. */
+.set.locked{background:var(--surface-2)}
+.set.locked input:disabled,.set.locked select:disabled{color:var(--ink-3);
+  background:var(--surface);border-color:var(--line)}
+.set>.btn{align-self:flex-start}
+#settings-fields{display:block;grid-template-columns:none}
+#settings-fields h3{display:flex;align-items:center;gap:var(--s2);
+  margin:var(--s4) 0 0}
+
+/* ---- E7: 120 ms, on hover, on a border and on a panel change. Nothing
+        animates layout, and the whole set sits inside the reduced-motion
+        block below. ---- */
+@media (prefers-reduced-motion: reduce){
+  .pulse{animation:none;box-shadow:0 0 0 2px var(--focus)}
+  *,*::before,*::after{transition-duration:.01ms !important;
+    animation-duration:.01ms !important;animation-iteration-count:1 !important;
+    scroll-behavior:auto !important}
+}
+
+
+/* =====================================================================
+   Tier 3: the controls the sections became.
+   ===================================================================== */
+
+/* 3.1: the per-container assignment list. One row per container that receives
+   something, in the direction the player thinks in.
+
+   Blocks in an auto-filling grid rather than a table: a 1280 px window is one
+   column and gets more rows on screen from the compaction alone, and from
+   about 1500 px it is two columns and all eleven fit with no scrolling. The
+   row keeps `role="row"` and its two halves `role="cell"`, under the two
+   `columnheader`s, because "Container" and "Categories it receives" is what
+   the halves mean. */
+#store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));
+  gap:0 var(--s4);align-content:start}
+.desthead,.destrow{display:grid;grid-template-columns:190px minmax(0,1fr);
+  gap:var(--s3);align-items:start;min-width:0}
+.desthead{grid-column:1/-1;position:sticky;top:0;z-index:2;
+  background:var(--surface);padding:var(--s2) var(--s3);
+  border-bottom:1px solid var(--line)}
+.desthead .dh{font-size:12px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--ink-3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+/* 3 px: the two px each that `.destmeta .pill`, `.addbtn` and `.addsel`
+   needed to reach the sheet's own 24 px floor come back off the row's
+   padding, so eleven rows still measure what they measured. */
+.destrow{padding:3px var(--s3);border-bottom:1px solid var(--line)}
+.destrow:hover{background:var(--surface-2)}
+.destcell,.destchips{min-width:0}
+.destcell .cname{font-weight:600;line-height:1.3;font-size:13px;
+  display:flex;align-items:baseline;gap:6px;min-width:0}
+.destcell .cname .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.destcell .cname .ckey{margin-left:0;flex:none}
+.destmeta{gap:6px;margin-top:2px;font-size:12px;color:var(--ink-3);
+  flex-wrap:wrap;align-items:center}
+/* 24 px, not 20. This sheet has carried `button,.btn,.iconbtn,.chip .x,
+   .del,.linkbtn,.fchip{min-height:24px}` as its own floor for the whole
+   project, WCAG 2.5.8 asks for 24x24, and 6b and 6c went under it. */
+.destmeta .pill{min-height:24px;padding:0 6px}
+/* the `+` that swaps the category select in. Its whole affordance is a 12 px
+   glyph in a box, so the box has to be visible: `--line-3` is 3.33:1 against
+   the card and 3.14:1 against a hovered row, where `--line-2` was 1.47. */
+.addwrap{display:inline-flex;align-items:center}
+.addbtn{min-height:24px;padding:0 8px;font-weight:600;line-height:1;
+  border-color:var(--line-3)}
+.bar{height:5px;border-radius:3px;background:#0A0E14;
+  border:1px solid rgba(255,255,255,.05);overflow:hidden;display:flex;
+  width:52px;flex:none}
+.bar i{display:block;height:100%}
+.addsel{min-height:24px;font-size:12px;border-style:dashed;color:var(--ink-2);
+  max-width:160px;border-color:var(--line-3)}
+td .chipwrap{align-items:center}
+
+/* the No destination panel.
+   `nowrap`: a row is a category and the picker that fixes it, and wrapping
+   the picker under the chip made a row 70 px in a box that had 35 px, so not
+   one of the four rows fitted at any window size and the only control that
+   clears the page's own warning was unreachable without scrolling a viewport
+   smaller than one row. One line each: the chip gives way, the picker does
+   not, and a clipped category name carries its own title. */
+.unrouted{display:flex;align-items:center;gap:var(--s2);padding:3px 0;
+  flex-wrap:nowrap;min-width:0}
+.unrouted>.chip{flex:1 1 auto;min-width:0;flex-wrap:nowrap}
+.unrouted>.chip .chip-name{overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;min-width:0}
+.unrouted>select{flex:0 0 104px;min-width:0}
+.unrouted+.unrouted{border-top:1px solid var(--line)}
+.unroute-all{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap}
+.unroute-fold{flex:none;border-top:1px solid var(--line)}
+.unroute-fold>summary{cursor:pointer;list-style:none;font-size:12px;
+  color:var(--ink-2);padding:var(--s2) var(--s3);min-height:24px;
+  display:flex;align-items:center;gap:var(--s2)}
+.unroute-fold>summary::-webkit-details-marker{display:none}
+.unroute-fold>summary::before{content:"+";color:var(--ink-3);font-weight:700}
+.unroute-fold[open]>summary::before{content:"-"}
+.unroute-fold>summary:hover{color:var(--ink);background:var(--surface-2)}
+.unroute-note{padding:0 var(--s3) var(--s2);margin:0}
+.empty{display:flex;flex-direction:column;align-items:center;gap:var(--s2);
+  padding:var(--s6) var(--s4);text-align:center;color:var(--ink-2)}
+.empty svg{color:var(--ink-3)}
+.empty b{font-size:15px;font-weight:600;color:var(--ink)}
+.empty p{font-size:12px;color:var(--ink-3);max-width:46ch}
+
+/* B3: the sources, as a real ordered table with a 34 px ordinal column */
+table.srctable{width:100%;border-collapse:collapse}
+table.srctable td{padding:var(--s1) var(--s3);
+  border-bottom:1px solid var(--line);vertical-align:middle}
+table.srctable tr:last-child td{border-bottom:0}
+table.srctable tbody tr:hover{background:var(--surface-2)}
+table.srctable tr.dragging{opacity:.45}
+table.srctable td:first-child{width:34px;text-align:center}
+table.srctable .srcname{font-size:13px}
+table.srctable .srcname{min-width:0;overflow-wrap:anywhere}
+table.srctable .srctools{white-space:nowrap;width:96px;text-align:right;
+  padding-left:0;padding-right:var(--s1)}
+table.srctable .srctools .ord-btns{display:inline-flex}
+table.srctable .c{text-align:center}
+table.srctable .r{text-align:right}
+
+/* 3.2: the rule composer. The sentence is the control. */
+.rule{border-bottom:1px solid var(--line);padding:6px var(--s3);
+  display:flex;gap:var(--s2);min-width:0}
+.rule:last-child{border-bottom:0}
+.rule:hover{background:var(--surface-2)}
+.rule.bad{box-shadow:inset 3px 0 0 var(--danger)}
+.rule.dragging{opacity:.45}
+.rule.over{box-shadow:inset 0 2px 0 var(--link)}
+/* X4: the ordinal column sets the row height -- 16 + 24 + 24 = 64 px stacked,
+   against the sentence's 45 -- and the 24x24 pointer floor is not negotiable,
+   so the row is 77 px and not the mockup's 64. Laying the arrows out along one
+   line got it to 58, but 42 px of the sentence went with them and the item
+   token collapsed to "S... CA...". A row the owner cannot read is not a row
+   gained, so the column stays 22 px wide and the width comes out of the Run
+   options column instead. */
+.rule .ord2{display:flex;flex-direction:column;align-items:center;gap:0;
+  flex:none;width:22px;cursor:grab}
+.rule .ord2 .n{font-size:12px;color:var(--ink-3);line-height:16px}
+.rule .ord2 .ord-btns{flex-direction:column;gap:0}
+/* The mockup draws these at 20 px. 24x24 is this project's own pointer-target
+   floor and two rounds of review measured it, so the floor wins over the
+   mockup here as it did for the `?`. */
+.rule .ord2 .ordbtn{padding:0;min-width:24px;min-height:24px}
+.rule .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+/* X4: 3.2 costs a rule ~64 px collapsed, and the sentence wrapping to three
+   lines put it at ~210 px -- so three of the owner's eleven rules fitted the
+   screen the section was designed around. One line where one line fits, and
+   the shortfall is absorbed by the two container selects and the item token,
+   each of which shrinks to an ellipsis with its full value in a `title` (A5).
+
+   QA 2, item 13: `nowrap` plus a wrap rule keyed to the *viewport* was the
+   one place in the application that clipped a focusable control. At 1280 the
+   Rules column is 659 px wide while the viewport is over the 1100 px
+   threshold, so the longest sentence -- `keep N <item> in <source> and send
+   the rest to <container> stopping at N` -- laid out at 781 px, `.scrollin`
+   is `overflow-x:hidden`, and rule 5's cap input sat 106 px past the clip
+   edge with no scrollbar and no way to reach it with a mouse. Two selects and
+   a token cannot give back 122 px and stay readable, so the line wraps
+   instead, and it wraps on the box rather than on the window: the two
+   shrinkable controls are sized from a small basis and grow into whatever
+   room the column has, so a flex line breaks only when the sentence genuinely
+   does not fit and every rule that did fit on one line still does. */
+.say{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;
+  line-height:26px;min-width:0}
+/* the fixed words are `--ink-2`, so the controls read as the variables */
+.say .w{color:var(--ink-2);flex:none;white-space:nowrap}
+.say select,.say input{min-height:26px;font-size:13px}
+/* `1 1 96px`, not `0 1 auto`: a flex line is broken on base sizes and only
+   then shrinks what is on it, so a select whose base is its natural 172 px
+   would push a wrap that its shrunk 96 px never needed. */
+.say select.says{flex:1 1 96px;min-width:96px;max-width:172px;
+  text-overflow:ellipsis}
+/* the verb is the one other place amber is allowed */
+.say select.verb{font-weight:600;color:var(--amber);background:var(--surface-3);
+  flex:none;width:92px;max-width:92px}
+.say input.amt{width:52px;flex:none;text-align:right;font-weight:600}
+.say .tok{display:inline-flex;align-items:center;gap:6px;min-height:26px;
+  padding:0 var(--s2);border:1px solid var(--line-2);border-radius:var(--r);
+  background:var(--surface-2);font-weight:600;color:var(--ink);cursor:pointer;
+  font-family:inherit;font-size:13px;flex:1 1 112px;min-width:112px;
+  max-width:210px;overflow:hidden}
+.say .tok:hover{border-color:var(--ink-3);background:var(--surface-3)}
+.say .tok .nm2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  min-width:0}
+.say .tok.unknown{border-color:rgba(255,123,123,.5)}
+.say .cellwarn{margin-top:0;flex:none;white-space:nowrap}
+/* below the two-column threshold a rule has the whole window, so the two
+   controls that carry a name are allowed all of it. */
+@media (max-width:1100px){
+  .say select.says,.say .tok{max-width:none}
+}
+/* X4: one line, like the sentence above it. The live figure is last and is
+   the one that absorbs a shortfall, because it is the only item here whose
+   full text is also in its own `title`. */
+.rulemeta{display:flex;gap:var(--s2);align-items:center;font-size:12px;
+  color:var(--ink-3);flex-wrap:nowrap;line-height:16px;min-width:0;
+  overflow:hidden;white-space:nowrap}
+.rulemeta>span{flex:none}
+@media (max-width:1100px){.rulemeta{flex-wrap:wrap;white-space:normal}}
+.rulemeta b{color:var(--ink-2);font-weight:500}
+.rulemeta .live{color:var(--ink-2);flex:0 1 auto;min-width:0;overflow:hidden;
+  text-overflow:ellipsis}
+.rulemeta .live.act{color:var(--ok-ink)}
+.rule .tools{display:flex;gap:2px;flex:none;align-items:flex-start;
+  padding-top:2px}
+.extra{display:flex;gap:var(--s4);flex-wrap:wrap;align-items:flex-start;
+  padding:var(--s3);margin-top:2px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:var(--r)}
+.extra.hidden{display:none}
+.lbl{display:flex;flex-direction:column;gap:var(--s1);min-width:0}
+.lbl>span{font-size:12px;color:var(--ink-2);font-weight:500}
+.lbl .under{font-size:12px;color:var(--ink-3)}
+.lbl.grow{flex:1 1 300px}
+.lbl input.num{width:72px;text-align:right}
+.lbl .unit>input{width:72px}
+
+/* 3.3 the plan: the moves table's `Decided by` column */
+table.plan-diff.moves td{vertical-align:top}
+table.plan-diff .whycell{max-width:320px}
+table.plan-diff .whycell div{margin:1px 0}
+.apply-card>.hd{display:flex;align-items:center;gap:var(--s2);
+  padding:0 0 var(--s2);border-bottom:1px solid rgba(255,123,123,.25);
+  margin-bottom:var(--s2)}
+.apply-card .lede{font-size:12px;color:var(--ink-2)}
+/* the no-guarantees line: read as a caution, not as a hint */
+#apply-warning{color:var(--warn-ink)}
+#backups-list.scrollin{--h:260px}
+
+/* the two section-owned scroll regions on Items and Categories */
+#assign-scroll{--h:372px}
+#sources.scrollin{--h:300px}
+#item-rules.scrollin{--h:390px}
+#options.scrollin{--h:420px;padding:var(--s3);display:flex;
+  flex-direction:column;gap:var(--s3)}
+
+/* C2: the Items table body is a fixed height inside the section */
+#item-table[role="grid"]{max-height:398px}
+
+/* 1000 px: the save identity truncates with a proper ellipsis and the rail
+   narrows rather than the content overflowing sideways. */
+@media (max-width:1100px){
+  :root{--rail:180px}
+  .saveid{display:none}
+  .hstats{gap:var(--s3)}
+  #item-table,#item-rules{overflow-x:visible}
+  .it-head,.it-row{min-width:0}
+}
+
+/* 4: the category cell is an 8 px dot and a select, because the generated
+   hue is data and a border is state. */
+.catcell{display:flex;align-items:center;gap:6px;min-width:0}
+.catcell .it-bucket{flex:1;min-width:0}
+.it-head>div{display:flex;align-items:center;gap:4px}
+
+/* The rail is 212 px wide and clips its own overflow, so a confirmation
+   anchored to the stop entry had nowhere to put its question. It opens beside
+   the rail, still attached to the control that was pressed: `position:fixed`
+   rather than `absolute`, because the rail is the thing doing the clipping. */
+.railfoot{position:relative}
+.railfoot .confirm{position:fixed;left:calc(var(--rail) + 8px);bottom:12px;
+  width:340px;z-index:90;background:var(--surface-3);
+  border-color:rgba(230,188,99,.5)}
+
+
+/* =====================================================================
+   X11 (review 3): "only the list that owns the overflow scrolls" was true of
+   the page and false inside a section -- Categories had three scroll regions
+   and Rules four, one of them (`.tidy-list`) nested two deep inside another,
+   so a wheel gesture over the rule list chained through three levels.
+
+   Two changes. The list that owns the overflow is sized to *fill* its column,
+   so the section body has nothing left to scroll and stops being the outer
+   half of a nest; and `overscroll-behavior:contain` means a gesture that
+   reaches the end of a list cannot hand itself on. Maximum nesting depth on
+   every section is now one.
+   ===================================================================== */
+.stagebody{overscroll-behavior:contain}
+.scrollin,#item-table[role="grid"]{overscroll-behavior:contain}
+
+/* the sections whose own lists own the overflow: the body is a column that
+   does not scroll, and the list takes the slack */
+#tab-categories>.stagebody,#tab-rules>.stagebody,#tab-items>.stagebody{
+  display:flex;flex-direction:column;overflow:hidden;gap:var(--s3)}
+/* `.cols` is a grid and grids default to `align-items:start` here, so a
+   column sized itself to its content and the "filling" list grew past the
+   section instead of shrinking into it. */
+#tab-categories>.stagebody>.cols,#tab-rules>.stagebody>.cols{
+  flex:1;min-height:0;align-items:stretch}
+#tab-categories .colstack,#tab-rules .colstack{min-height:0}
+/* Every card in these columns is a flex column that may shrink; the one that
+   holds a `.bd.flush` takes the slack. It used to be `:first-child` only, so
+   the second card in a column sized itself to its content and took what it
+   wanted -- which is the whole of finding 6. `.fixed` opts out and is for a
+   card whose height scales with its own content. */
+#tab-categories .colstack>.card,
+#tab-rules .colstack>.card{display:flex;flex-direction:column;min-height:0}
+#tab-categories .colstack>.card>.bd.flush,
+#tab-rules .colstack>.card>.bd.flush{flex:1;min-height:0;display:flex}
+/* Inside these columns only a scrolling list gives way. A header, a control
+   row or a hint that shrank would clip rather than scroll. */
+#tab-categories .colstack>.card>.hd,
+#tab-rules .colstack>.card>.hd,
+#tab-categories .colstack>.card>.bd.tight,
+#tab-rules .colstack>.card>.bd.tight{flex:none}
+/* and the shelf is bounded and scrolls, so 18 unrouted categories cannot push
+   the Sources list off the screen either. 120 px is three and a half of the
+   32 px rows the row rule above makes, and the card's cap is now high enough
+   that it can never take the shelf below them (it did: 35 px of window over
+   295 px of content, at every window size, so none of the four rows fitted). */
+#bucket-shelf{flex:1 1 auto;min-height:32px;max-height:112px;overflow-y:auto;
+  overscroll-behavior:contain;padding:2px var(--s3)}
+/* The No-destination card is the bounded one, and the list beside it keeps
+   what it needs. Sizing that card by its content is what left the Destinations
+   list 84 px of a 995 px table in the first place, so it is capped and its
+   shelf scrolls inside the cap; the Sources list above it takes its natural
+   height. 6a: the right column has about 117 px spare and a shelf row is one
+   line. */
+#tab-categories .colstack>.card.fixed{flex:none;max-height:232px}
+/* The Add-a-source row was two lines and 60 px of a column whose two lists
+   need every pixel: a 70 px label plus a select at its natural 177 px plus
+   the Add button is 305 px in a 291 px row, and a flex line wraps before it
+   shrinks anything. One line and 26 px, which is 34 px back to the Sources
+   list. Same fix as the remove-everywhere row below. */
+#tab-categories .colstack>.card>.bd.tight .field.grow{min-width:0}
+#tab-categories .colstack>.card>.bd.tight .field.grow>select{flex:1 1 90px;
+  min-width:0}
+/* The remove-everywhere row fits on one line in a 340 px column when its
+   select is allowed to shrink. On three lines it was 85 px of the 431 px the
+   two cards in that column share. */
+.unroute-all .field{flex:1 1 auto;min-width:0}
+/* A flex line wraps on base sizes before it shrinks anything, so the select
+   needs a small basis rather than permission to shrink: at its natural 177 px
+   this row was three lines and 85 px tall in a 340 px column. */
+.unroute-all .field select{flex:1 1 90px;min-width:0}
+#assign-scroll,#item-rules.scrollin,#options.scrollin,#sources.scrollin{
+  max-height:none;flex:1;min-height:0;width:100%}
+/* a warning list is content, not a column: bounded so it can never push the
+   lists off the screen, and it is the only thing in the section that can. */
+#issues,#rules-issues{flex:none;max-height:124px;overflow-y:auto;
+  overscroll-behavior:contain}
+#issues:empty,#rules-issues:empty{display:none}
+#tab-items>.stagebody>#item-table{flex:1;min-height:0;max-height:none}
+
+/* the tidy picker was a 210 px scroller inside the options scroller, and its
+   30 always-visible checkboxes were a fifth of the section's tab order for an
+   option most people never touch. A fold, and not a scroller. */
+.tidy-opt{display:flex;flex-direction:column;align-items:stretch;gap:var(--s1)}
+.tidy-head{gap:var(--s2)}
+.tidy-fold{border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface-2)}
+.tidy-fold>summary{cursor:pointer;list-style:none;display:flex;
+  align-items:center;gap:var(--s2);min-height:26px;padding:var(--s1) var(--s2);
+  font-size:12px;color:var(--ink-2)}
+.tidy-fold>summary::before{content:"B8 " / "";color:var(--ink-3)}
+.tidy-fold[open]>summary::before{content:"BE " / ""}
+.tidy-fold>summary::-webkit-details-marker{display:none}
+.tidy-fold>summary:hover{color:var(--ink)}
+.tidy-list{max-height:none;overflow:visible;border:0;background:none;
+  padding:var(--s1) var(--s2) var(--s2)}
+
+/* X1's line, and the add-a-rule footer, both buy rows for the list above
+   them: the section is a fixed 720 px and every pixel of chrome is a rule the
+   owner cannot see. The ordinal column (16 + 20 + 20 + padding) is what sets
+   the 68 px row height, which is the mockup's own figure. */
+.keyline{padding:5px var(--s3);border-bottom:1px solid var(--line);
+  font-size:12px;color:var(--ink-2);line-height:16px}
+#tab-rules .colstack>.card>.bd:last-child{padding:var(--s2) var(--s3)}
+#tab-rules .colstack>.card>.bd:last-child .row.gap{margin-top:0}
+#tab-rules #new-item-note,#tab-rules #add-rule-why{margin-top:var(--s1);
+  line-height:15px}
+#tab-rules #add-rule-why:empty{display:none}
+#tab-categories>.stagebody,#tab-rules>.stagebody,#tab-items>.stagebody{
+  padding-bottom:var(--s4)}
+
+
+/* X10 (review 3): the Items grid's seven columns have a combined minimum of
+   ~768 px, and at 1000 px the panel is 756 px wide -- so the "game category"
+   header and its `?` sat 68 px outside the clipper, reachable only by an
+   inner horizontal scroll a mouse user has to discover. C5 promised no
+   clipped descendants at 1000 px. The minima come down instead, and the three
+   text cells ellipsise; nothing is hidden and there is no inner scroll. */
+@media (max-width:1100px){
+  .it-head,.it-row{
+    grid-template-columns:24px minmax(110px,2fr) minmax(80px,1fr) 62px
+      minmax(150px,1.4fr) 44px minmax(80px,1fr);
+    gap:6px}
+  .it-name b,.it-id,.it-orig>span{overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;display:block;min-width:0}
+  #item-table[role="grid"]{overflow-x:hidden;padding:0 var(--s1)}
+}
+
+/* X14: the Sources rows wrapped names onto two and three lines, so six of the
+   owner's 23 sources were visible where `after/categories.png` shows
+   single-line rows. The `width:100%;max-width:0` pair is the table idiom for
+   "this cell takes the slack and truncates"; the full name is in the row's
+   own title, and the key stays inline. */
+table.srctable .srcname{width:100%;max-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+table.srctable td{white-space:nowrap}
+table.srctable tr{height:30px}
+
+/* the add-a-rule row: control, then its two sentences, on one line at 1280 */
+#tab-rules .colstack>.card>.bd:last-child .row.gap{flex-wrap:wrap;
+  align-items:center;row-gap:var(--s1)}
+#tab-rules #new-item-note,#tab-rules #add-rule-why{flex:1 1 260px;
+  min-width:0;margin:0;line-height:15px}
+
+/* A `?` in a grid column header has a cell the width of its column, so its
+   note cannot lay itself out inline without leaving the panel (the last of
+   X10 at 1000 px). It spans the header instead, over the rows it explains. */
+.it-head{position:relative}
+.it-head .helpnote{position:absolute;left:var(--s2);right:var(--s2);
+  top:calc(100% + 2px);max-width:none;z-index:6;background:var(--surface-3);
+  text-transform:none;letter-spacing:normal;font-weight:400}
+
+/* X4: the sentence needs the width more than the options list does, so the
+   Rules section's second column is narrower than the Categories one. */
+#tab-rules>.stagebody>.cols.b{grid-template-columns:minmax(0,1fr) 296px}
