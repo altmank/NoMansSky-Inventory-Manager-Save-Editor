@@ -1024,23 +1024,54 @@ def test_a_save_with_no_metadata_has_no_season_word(tmp_path, fixture_variant):
     assert save.gates() == [], "no metadata is not an expedition"
 
 
-def test_a_version_outside_the_range_is_a_warning_not_a_refusal(
+def test_a_version_outside_the_range_is_a_note_not_a_refusal(
         fixture_variant, synthetic_config):
     """Planning a save from a build we have not seen is how the corpus that
-    would widen the range gets collected. Writing to one is not."""
+    would widen the range gets collected. Writing to one is not.
+
+    `note`, not `warn`: the level is what the page and step 1b act on, and
+    with `strict_version_check` off the apply *runs*, which is what a note
+    means here. The sentence is the whole sentence, and it does not quote the
+    refusal's wording."""
     save = SaveFile(fixture_variant("version-4800")["save"])
     gates = save.gates()
-    assert [(g["where"], g["level"]) for g in gates] == [("version", "warn")], \
-        "one gate, at warning level: %s" % gates
-    assert "this save reports version 4800" in gates[0]["message"]
-    assert "4670 to 4735" in gates[0]["message"], \
-        ("the sentence names the range it was verified on: %s"
+    assert [(g["where"], g["level"]) for g in gates] == [("version", "note")], \
+        "one gate, at note level: %s" % gates
+    assert gates[0]["message"] == (
+        "this save reports version 4800; this build was verified on 4670 to "
+        "4735. Apply proceeds: the round-trip and nothing-else-changed checks "
+        "run on this exact file. Settings can turn on strict_version_check to "
+        "refuse instead."), gates[0]["message"]
+    assert "refused" not in gates[0]["message"], \
+        ("the advisory path never says the apply is refused: %s"
          % gates[0]["message"])
 
     plan, _commit = planner.build_plan(save, synthetic_config)
     assert plan.rows, "the plan is still printed"
     assert any("version 4800" in n["message"] for n in plan.notes), \
         "with the banner on it: %s" % plan.notes
+
+
+def test_strict_version_check_is_the_other_sentence(fixture_variant,
+                                                    synthetic_config):
+    """One gate, two sentences, and the mode decides which. The owner's report
+    was both of them at once: the refusal's wording, then a second sentence
+    contradicting it with no full stop between them."""
+    save = SaveFile(fixture_variant("version-4800")["save"])
+    gates = save.gates(True)
+    assert [(g["where"], g["level"]) for g in gates] == [("version", "warn")], \
+        "strict makes it a warning, which is the level step 1b refuses: %s" % gates
+    assert gates[0]["message"] == (
+        "this save reports version 4800; this build was verified on 4670 to "
+        "4735, and strict_version_check is on, so apply is refused."), \
+        gates[0]["message"]
+    assert "fixture" not in gates[0]["message"], \
+        "a fixture is a maintainer's word, not a player's"
+
+    plan, _commit = planner.build_plan(save, synthetic_config, strict=True)
+    assert any(n["message"] == gates[0]["message"] for n in plan.notes), \
+        ("the plan's banner is the sentence the apply gate shows: %s"
+         % plan.notes)
 
 
 def test_a_version_that_is_not_a_number_is_gated(synthetic_save, monkeypatch):

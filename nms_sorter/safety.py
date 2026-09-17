@@ -2186,20 +2186,28 @@ def _apply_locked(save_path, cfg, expected_fingerprint, plan_builder, backup_roo
     # it is a measured structural difference (the live inventory may be the
     # season copy), not a version number.
     gated = SaveFile(save_path)
-    gates = gated.gates()
+    # The flag goes *into* the gates, so the version gate answers at the level
+    # that describes what happens next -- `note` and the apply runs, `warn`
+    # and this step refuses -- and the sentence it carries is written for that
+    # outcome. Deciding here and re-wording there is what let the page promise
+    # a refusal and its continuation in the same breath.
+    gates = gated.gates(strict_version_check)
     lo, hi = SUPPORTED_VERSIONS
     for g in gates:
         # A `note` gate is a caveat, not a reason to stop: "there is no mf_ to
         # confirm this is not an expedition" is said out loud here and the
         # apply runs (Q12).
-        if g.get("level") == "note":
-            r.info("save is one this build was verified on", g["message"])
-        elif g.get("level") == "warn" and g.get("where") == "version"                 and not strict_version_check:
+        if g.get("level") == "note" and g.get("where") == "version":
+            # The step's own wording, which names the range and says this file
+            # is what steps 4, 6 and 7 are about to test. The gate's sentence
+            # is the page's; the report has always had its own.
             r.info("save is one this build was verified on",
                    "this save reports version %s, outside the range this "
                    "build was verified on (%d to %d); continuing, because the "
                    "round-trip and nothing-else-changed checks run on this "
                    "file regardless" % (gated.version(), lo, hi))
+        elif g.get("level") == "note":
+            r.info("save is one this build was verified on", g["message"])
         else:
             r.fail("save is one this build was verified on", g["message"])
     r.ok("save is one this build was verified on",

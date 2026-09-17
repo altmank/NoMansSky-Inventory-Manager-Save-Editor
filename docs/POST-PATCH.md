@@ -164,14 +164,20 @@ against, and **it is not a wall**. A save outside it plans with a banner and
 > (... to ...); continuing, because the round-trip and nothing-else-changed
 > checks run on this file regardless
 
+The page and the plan say the same thing in the player's words, as a note:
+
+> this save reports version ...; this build was verified on ... to ....
+> Apply proceeds: the round-trip and nothing-else-changed checks run on this
+> exact file. Settings can turn on `strict_version_check` to refuse instead.
+
 The gate is advisory because the alternative costs more than it buys: the game
 updates, the version rises the day it does, and a refusal keyed to a number
 turns the tool off on every patch. Only an operator who turned
 `strict_version_check` on, or passed `--strict-version-check`, sees a refusal
 instead:
 
-> this save reports version ...; this build was verified on ... to ..., so
-> apply is refused until a fixture for ... exists
+> this save reports version ...; this build was verified on ... to ..., and
+> `strict_version_check` is on, so apply is refused.
 
 The expedition gate and step 8's `mf_` format check are unchanged in both
 modes: those are measured structural differences, not a version number.

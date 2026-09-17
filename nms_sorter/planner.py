@@ -444,7 +444,7 @@ def _note(plan, level, msg):
     plan.notes.append({"level": level, "message": msg})
 
 
-def build_plan(save, cfg):
+def build_plan(save, cfg, strict=False):
     """Plan the run. Returns (plan, commit) -- `commit()` writes it into `save`.
 
     Raises `savemodel.SaveGate` before doing any work when the save carries a
@@ -452,13 +452,20 @@ def build_plan(save, cfg):
     would print a plan over an inventory that may not be the live one, and a
     plan the operator can read and approve is the thing an apply gate is
     supposed to protect. A `warn`-level gate -- a save version outside the
-    range this build was verified on -- becomes a plan note instead, because
-    reading a save is how the corpus that would widen the range gets collected.
-    A `note`-level gate -- no `mf_` to confirm that this is not an expedition
-    -- becomes the same plan note and does not stop the apply either.
+    range this build was verified on, with `strict_version_check` on --
+    becomes a plan note instead, because reading a save is how the corpus that
+    would widen the range gets collected. A `note`-level gate -- no `mf_` to
+    confirm that this is not an expedition, or that same version outside the
+    range with the flag off -- becomes the same plan note and does not stop the
+    apply either.
+
+    `strict` is the operator's `strict_version_check`, passed to
+    `save.gates()` so the banner on the plan is the same sentence the Apply
+    gate shows. A plan that promises a refusal the apply will not perform, or
+    the reverse, is the defect this parameter exists to prevent.
     """
     from .savemodel import SaveGate
-    gates = save.gates() if hasattr(save, "gates") else []
+    gates = save.gates(strict) if hasattr(save, "gates") else []
     for g in gates:
         if g["level"] == "refuse":
             raise SaveGate(g["message"])

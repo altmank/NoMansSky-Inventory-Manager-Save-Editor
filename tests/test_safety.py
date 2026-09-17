@@ -2946,9 +2946,11 @@ def test_strict_version_check_refuses_with_the_documented_sentence(
         _apply(version_lab, fingerprint=version_lab["plan"].fingerprint_full,
                strict_version_check=True)
     assert "this save reports version 4800; this build was verified on 4670 " \
-           "to 4735, so apply is refused until a fixture for 4800 exists" \
+           "to 4735, and strict_version_check is on, so apply is refused." \
            in str(exc.value), \
         "the strict refusal is the sentence the documents quote: %s" % exc.value
+    assert "fixture" not in str(exc.value), \
+        "and it does not send the player looking for a fixture: %s" % exc.value
     assert _unchanged(version_lab), "and nothing is written"
 
 

@@ -1116,8 +1116,15 @@ class SaveFile(object):
         """
         return self.d.at(["CommonStateData", "SeasonData"]) is not None
 
-    def gates(self):
+    def gates(self, strict=False):
         """-> [{level, where, message}] for every reason to stop on this save.
+
+        `strict` is the operator's `strict_version_check`. It is a parameter
+        rather than something a caller bolts on afterwards because the version
+        gate's *sentence* differs between the two modes, and a sentence
+        composed in two places is how the page came to say "apply is refused"
+        and "apply proceeds" in one breath (owner's report). One sentence, from
+        here, complete.
 
         `level` is one of three, and the difference is which stage acts on it:
 
@@ -1150,9 +1157,13 @@ class SaveFile(object):
         rather than refusing or passing in silence.
 
         **version** -- the root `Version` is outside `SUPPORTED_VERSIONS`.
-        Planning still works, because reading is how a corpus gets collected;
-        writing does not, because the container paths and slot fields were
-        verified on the builds in that range and nothing else. `warn`.
+        Planning always works, because reading is how a corpus gets collected.
+        Whether writing works is the operator's `strict_version_check` and not
+        a fact about the save, so this gate answers at the level that describes
+        what will actually happen: `note` with the flag off, because the apply
+        runs under steps 4, 6 and 7 on this exact file, and `warn` with it on,
+        because step 1b then refuses. Each level carries the sentence for that
+        outcome and nothing else.
         """
         out = []
         season = self.season_word()
@@ -1173,11 +1184,21 @@ class SaveFile(object):
         v = self.version()
         lo, hi = SUPPORTED_VERSIONS
         if not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= hi:
-            out.append({
-                "level": "warn", "where": "version",
-                "message": ("this save reports version %s; this build was "
-                            "verified on %d to %d, so apply is refused until "
-                            "a fixture for %s exists" % (v, lo, hi, v))})
+            if strict:
+                out.append({
+                    "level": "warn", "where": "version",
+                    "message": ("this save reports version %s; this build was "
+                                "verified on %d to %d, and strict_version_check "
+                                "is on, so apply is refused." % (v, lo, hi))})
+            else:
+                out.append({
+                    "level": "note", "where": "version",
+                    "message": ("this save reports version %s; this build was "
+                                "verified on %d to %d. Apply proceeds: the "
+                                "round-trip and nothing-else-changed checks "
+                                "run on this exact file. Settings can turn on "
+                                "strict_version_check to refuse instead."
+                                % (v, lo, hi))})
         return out
 
     def meta_path(self):

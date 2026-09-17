@@ -991,12 +991,27 @@ Settings section, or start the sorter with `--strict-version-check`. Either way
 the backup was taken first. `docs/POST-PATCH.md`, step 7, has the full
 reasoning.
 
-### this save reports version ...; this build was verified on ... to ..., so apply is refused until a fixture for ... exists
+### this save reports version ...; this build was verified on ... to .... Apply proceeds: the round-trip and nothing-else-changed checks run on this exact file. Settings can turn on `strict_version_check` to refuse instead.
+
+cause: the save's own version caveat, on the page and on the plan, with
+`strict_version_check` **off**, which is the default. Your save's root
+`Version` is outside 4670 to 4735, the set of versions this build has been run
+against. Nothing is stopping: this is a note, not a refusal, and it says so in
+full rather than quoting the refusal's wording and then taking it back.
+fix: nothing. What proves the write is safe is steps 4, 6 and 7 on your actual
+file, not the number in it: it re-serialises byte for byte, the edited document
+survives its own serialisation, and nothing outside the containers your plan
+named differs. If you would rather be refused, turn `strict_version_check` on
+in the Settings section, or start the sorter with `--strict-version-check`, and
+the sentence below is what you get instead. `docs/POST-PATCH.md`, step 7, has
+the full reasoning and the playbook for widening the range.
+
+### this save reports version ...; this build was verified on ... to ..., and `strict_version_check` is on, so apply is refused.
 
 cause: step 1b with `strict_version_check` **on**. That setting is off by
 default, so if you did not turn it on -- or pass `--strict-version-check` -- you
-will not see this sentence; you will see the `continuing, because ...` line
-above instead. With it on, a root `Version` outside 4670 to 4735 is refused.
+will not see this sentence; you will see the note above instead. With it on, a
+root `Version` outside 4670 to 4735 is refused.
 fix: turn `strict_version_check` off in the Settings section and apply again;
 it applies at once and needs no restart. If it is set by the flag, the field
 says so and the flag has to go from the command line. Nothing was written, and the

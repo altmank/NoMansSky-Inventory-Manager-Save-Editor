@@ -266,7 +266,7 @@ def save_platform(save):
     return None
 
 
-def save_warnings(save):
+def save_warnings(save, strict=False):
     """`SaveFile.gates()` as a list.
 
     A gate that refuses raises; a gate that only warns -- "this save reports
@@ -274,12 +274,17 @@ def save_warnings(save):
     the page, or the operator approves a plan drawn with a caveat nobody showed
     them (GOAL.md §3.3, P6-2).
 
+    `strict` is the operator's `strict_version_check`. The version gate's
+    sentence is written for the mode it is in -- a `note` that says the apply
+    proceeds, or a `warn` that says it is refused -- so the page has a
+    complete sentence to render rather than one it has to finish itself.
+
     The `except` is not a seam: `gates()` reads the `mf_` and the document, and
     a warning that cannot be computed must not take down the save view that
     would have carried it.
     """
     try:
-        rows = save.gates() or []
+        rows = save.gates(strict) or []
     except Exception as exc:
         return [{"level": "warning", "where": "save",
                  "message": "the save's own checks could not be read (%s: %s)"
@@ -730,7 +735,7 @@ def last_apply(app, save):
     return None
 
 
-def save_view(save, labels=None, cfg=None, applied=None):
+def save_view(save, labels=None, cfg=None, applied=None, strict=False):
     """`labels` lets the operator name a container the save does not name -- the
     seven exocraft slots carry no name at all, and guessing which is a Roamer
     from a grid size is exactly the kind of inference this project has been
@@ -738,6 +743,9 @@ def save_view(save, labels=None, cfg=None, applied=None):
 
     `applied` is `last_apply`'s answer, passed in rather than computed here
     because it needs the backup root and this function is given a save.
+
+    `strict` is passed straight to `save_warnings`: the version gate's
+    sentence is the one for the mode the operator is in.
     """
     difficulty = save.difficulty()
     # Not `labels or {}`: this field is hand editable and this function draws
@@ -822,7 +830,7 @@ def save_view(save, labels=None, cfg=None, applied=None):
         "save_platform": save_platform(save),
         # the save's own warnings, not the config's: "verified up to 4735" is
         # a caveat on the plan, and a caveat nobody is shown is not a caveat.
-        "gates": save_warnings(save),
+        "gates": save_warnings(save, strict),
         "difficulty": difficulty,
         "units": save.units(),
         "freighter": save.freighter_name(),
@@ -873,7 +881,8 @@ def save_view_for(app, save):
     contradicts itself the moment the page re-reads the save.
     """
     return save_view(save, app.config.get("labels"), app.config,
-                     applied=last_apply(app, save))
+                     applied=last_apply(app, save),
+                     strict=app.strict_version_check)
 
 
 def restored_save_name(res):
@@ -1792,7 +1801,8 @@ class Handler(BaseHTTPRequestHandler):
             # A refusing gate raises and lands in the `except` below; a warning
             # gate belongs beside the config's own issues, which is the list
             # the page already renders.
-            out["issues"] = save_warnings(s) + app.validate()
+            out["issues"] = (save_warnings(s, app.strict_version_check)
+                             + app.validate())
         except Exception as exc:
             out["save"] = None
             out["issues"] = [{"level": "error", "where": "save",
@@ -2058,7 +2068,8 @@ class Handler(BaseHTTPRequestHandler):
         app = self.app
         with app.lock:
             s = app.save(body.get("file"), reload=True)
-            plan, _commit = planner.build_plan(s, app.config)
+            plan, _commit = planner.build_plan(
+                s, app.config, strict=app.strict_version_check)
             d = plan.as_dict()
             d["signature"] = s.signature()
             d["file"] = os.path.basename(s.path)

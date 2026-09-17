@@ -1066,8 +1066,8 @@ def test_a_plan_with_no_full_digest_at_all_still_applies(srv, monkeypatch):
     was the whole behaviour until §3.9."""
     real = planner.build_plan
 
-    def no_full(save, cfg):
-        plan, commit = real(save, cfg)
+    def no_full(save, cfg, **kw):
+        plan, commit = real(save, cfg, **kw)
         plan.fingerprint_full = None
         return plan, commit
 
@@ -1435,8 +1435,8 @@ def test_apply_refuses_an_unverified_version_only_in_strict_mode(srv,
         if kw.get("strict_version_check"):
             raise safety.Refused(
                 "this save reports version 4800; this build was verified on "
-                "4670 to 4735, so apply is refused until a fixture for 4800 "
-                "exists")
+                "4670 to 4735, and strict_version_check is on, so apply is "
+                "refused.")
         return safety.Report(), {"rows": 1, "backup": str(srv.tmp)}
 
     monkeypatch.setattr(safety, "apply_plan", boom)
@@ -1795,7 +1795,7 @@ def test_warning_gates_reach_the_save_view_and_the_bootstrap_issues(
                "message": "this save reports Version 4740; 4735 is the newest "
                           "one that was verified"}]
     monkeypatch.setattr(type(srv.app.save()), "gates",
-                        lambda self: list(warned))
+                        lambda self, strict=False: list(warned))
     status, b = post(srv, "/api/select", {"file": "save.hg"})
     assert status == 200, b
     assert b["gates"] == warned
@@ -1804,6 +1804,34 @@ def test_warning_gates_reach_the_save_view_and_the_bootstrap_issues(
     assert status == 200
     assert boot["save"]["gates"] == warned
     assert warned[0] in boot["issues"]
+
+
+@pytest.mark.parametrize("strict,level,tail", [
+    (False, "note", "Apply proceeds:"),
+    (True, "warn", "and strict_version_check is on, so apply is refused."),
+])
+def test_the_version_gate_reaches_the_page_worded_for_the_mode(
+        srv, monkeypatch, strict, level, tail):
+    """The owner's report: the page carried the refusal's wording and then a
+    second sentence saying the apply proceeds, joined with no full stop. The
+    route carries one complete sentence, and `strict_version_check` decides
+    which one; nothing downstream has to finish it."""
+    monkeypatch.setattr(type(srv.app.save()), "version", lambda self: 4800)
+    if strict:
+        post(srv, "/api/settings",
+             {"settings": {"strict_version_check": True}})
+    status, b = post(srv, "/api/select", {"file": "save.hg"})
+    assert status == 200, b
+    rows = [g for g in b["gates"] if g["where"] == "version"]
+    assert len(rows) == 1 and rows[0]["level"] == level, b["gates"]
+    msg = rows[0]["message"]
+    assert msg.startswith("this save reports version 4800; this build was "
+                          "verified on 4670 to 4735"), msg
+    assert tail in msg, msg
+    assert msg.endswith("."), "every sentence in it is punctuated: %s" % msg
+    assert ("Apply proceeds" in msg) is (not strict), \
+        "one mode's wording never appears in the other: %s" % msg
+    assert "fixture" not in msg, "not a word a player is owed: %s" % msg
 
 
 def test_a_save_with_nothing_to_warn_about_reports_an_empty_list(srv):
@@ -3451,15 +3479,22 @@ def test_the_no_destination_shelf_shows_its_rows(srv):
     and the `route to...` picker -- the only control that clears the page's own
     warning -- was below the fold of a box smaller than one row.
 
-    Two measurements in the CSS: a row is one line, and the card's cap is
-    above three of them."""
+    Two measurements in the CSS: a row is one line, and the shelf opens to
+    three of them.
+
+    2026-09-17: the shelf is behind its own fold now. The column cannot hold
+    both lists -- 468 px wanted of the 431 px there are at 1280x720 -- and the
+    Sources list is the one worked down every session, so this is what folds.
+    The card is sized by its content rather than capped: 48 px closed, 189
+    open, of which the shelf is 106, three of its 33 px rows."""
     css = _static_text(srv, "/static/app.css")
-    assert "#bucket-shelf{flex:1 1 auto;min-height:32px;max-height:112px" in css
+    assert "#bucket-shelf{flex:none;min-height:34px;max-height:106px" in css
     row = css.split(chr(10) + ".unrouted{", 1)[1].split("}", 1)[0]
     assert "flex-wrap:nowrap" in row,         "a row is the category and the picker that fixes it, on one line: %s" % row
-    assert "#tab-categories .colstack>.card.fixed{flex:none;max-height:232px}" in css
+    assert "#tab-categories .colstack>.card.fixed{flex:none}" in css
     html = _static_text(srv, "/")
     assert 'class="unroute-fold"' in html,         "and the destructive control is behind a fold, not under the remedy"
+    assert 'class="nd-fold" id="nd-fold">' in html,         "and the shelf itself is behind one, closed"
 
 
 def test_no_compacted_control_is_under_the_sheets_own_24px_floor(srv):
