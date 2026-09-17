@@ -2,8 +2,8 @@
 
 Sorts your No Man's Sky inventories for you. Tell it which category of item
 belongs in which container, see exactly what would move, and let it move the
-lot in one go. It only moves what you already own: no spawning, no stat
-editing, no unit editing.
+lot in one go. It only moves what you already own:
+no spawning, no stat editing, no unit editing.
 
 ![Screenshot of the Save section](docs/images/save-tab.png)
 
