@@ -9,6 +9,17 @@ A data-only regeneration after a game patch bumps the patch version and
 
 ## [Unreleased]
 
+### Changed
+
+- An X acts. Removing a rule, a source, a destination from a category or a
+  category you added no longer asks first: the press does it, the toast names
+  what went and carries an undo for ten seconds, and "Undo last change" in the
+  save bar keeps it after that. Delete or Backspace on a chip or a row is the
+  same removal. What an undo cannot take back still asks: apply, restore from
+  Backups, start over or putting a kept configuration back, throwing away
+  unsaved changes, a bulk change to the selected rows in Items, and stopping
+  the sorter.
+
 ## [1.0.1] - 2026-09-17
 
 ### Fixed

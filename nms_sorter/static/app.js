@@ -230,10 +230,36 @@ function toast(msg, kind, action) {
    persisted, and then the undo persists the snapshot back. */
 let UNDO = null;
 function snapshot() { return JSON.parse(JSON.stringify(S.config)); }
-function undoable(label, before, persisted) {
-  UNDO = { before: before, persisted: !!persisted, label: label };
+/* `focus` is where the undo lands: the control the restored thing carries,
+   named by the removal that took it away. Without it every undo put the focus
+   back on revert, in the save bar, rather than on the row the player was
+   working down (X, 2026-09-17). */
+function undoable(label, before, persisted, focus) {
+  UNDO = { before: before, persisted: !!persisted, label: label,
+           focus: focus || null };
   toast(label, "", { label: "undo", fn: doUndo });
   syncUndo();
+}
+
+/* ------------------------------------------------- a removal by keyboard (X)
+   Delete and Backspace on a row or a chip do what its own X does, with no
+   question either. The two keys belong to whatever field has the focus, so
+   they are read only on the node itself, on its remove button, and on the
+   inert spans between them: a Backspace in a rule's number field is a
+   Backspace. */
+function removeKeys(node, remove, btn) {
+  node.addEventListener("keydown", e => {
+    if (e.key !== "Delete" && e.key !== "Backspace") return;
+    const t = e.target;
+    if (t !== node && t !== btn) {
+      const tag = t.tagName;
+      if (t.isContentEditable || tag === "INPUT" || tag === "SELECT" ||
+          tag === "TEXTAREA" || tag === "BUTTON" || tag === "A") return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    remove();
+  });
 }
 
 /* The toast's undo was tab stop 107 of 108 and expired in ten seconds, so in
@@ -271,8 +297,10 @@ async function doUndo() {
   }
   S.plan = null;
   // The undo button disables itself once the undo is spent, so focus is handed
-  // to its neighbour in the save bar rather than falling to the body (U2).
-  focusAfter("revert");
+  // to the control the restored thing carries -- the chip, the source row, the
+  // rule the X took away -- and to its neighbour in the save bar when the edit
+  // named nothing (U2).
+  focusAfter(u.focus || "revert");
   renderRules(); renderPlanTab();
   syncUndo();
   const note = $("#undo-note");
@@ -292,10 +320,11 @@ async function doUndo() {
    `tr` with one spanning cell in a table, a block after the row everywhere
    else. It is still in place and still scrollable-to, and nothing about it is
    clipped. */
-/* The pair every remove in Categories and Rules uses: the press is a removal,
-   so the buttons say so. "yes, do it" and "no" stay the default for the rest
-   (stop, revert, restore, put a kept configuration back). */
-const REMOVE_YN = { yes: "yes, remove", no: "cancel" };
+/* No caller sits in a row today: X (2026-09-17) took the question away from
+   every remove in Categories and Rules, and every question left belongs to a
+   control in a block. The placement rule is `confirmInline`'s rather than any
+   one caller's, so it stays: a question that lands in a row again must not be
+   clipped. */
 function confirmRowHost(anchor) {
   const tr = anchor.closest("tr");
   if (tr && tr.parentNode && (tr.parentNode.tagName === "TBODY"
@@ -313,9 +342,14 @@ function confirmRowHost(anchor) {
 /* ------------------------------------------------- inline confirmation (D17)
    Not `window.confirm`: a modal steals the page and says nothing about what is
    about to be lost. This sits under the row, names the damage, and puts the
-   focus on the cancel button. `labels` renames the pair for a removal, where
-   "yes, remove" and "cancel" say what the press does. */
-function confirmInline(anchor, question, onYes, tick, whyOff, labels) {
+   focus on the cancel button.
+
+   What asks is what an undo cannot take back: apply, a restore from the
+   Backups card, start over or putting a kept configuration back, throwing away
+   unsaved changes (revert, and reload from disk), a bulk change to every
+   selected row in Items, and stopping the sorter. A removal is none of those:
+   it acts, and the toast carries the undo. */
+function confirmInline(anchor, question, onYes, tick, whyOff) {
   // one at a time in a section: the old rule looked at the control's own
   // parent, which the row host above is no longer inside.
   const scope = anchor.closest(".stage-panel, .savebar, .railfoot") || document;
@@ -326,9 +360,8 @@ function confirmInline(anchor, question, onYes, tick, whyOff, labels) {
   const box = el("div", "confirm");
   box.setAttribute("role", "group");
   box.appendChild(el("span", "cq", question));
-  const yes = el("button", "btn tiny confirm-yes",
-                 (labels && labels.yes) || "yes, do it");
-  const no = el("button", "btn tiny", (labels && labels.no) || "no");
+  const yes = el("button", "btn tiny confirm-yes", "yes, do it");
+  const no = el("button", "btn tiny", "no");
   const host = confirmRowHost(anchor);
   const close = () => {
     const owner = box.closest("tr.confirm-row");
@@ -681,9 +714,10 @@ const contPhrase = key => {
    accessible name -- where the key is always welcome and costs no layout.
    Visible prose is the other rule, the one `contOpt` states: the name, and the
    key after it only where two containers in this save read the same name.
-   QA pass 2 found the new chip-remove confirm asking "Stop routing Raw
-   Resources to Raw Resources (chest1)?" -- the one sentence on the page where
-   a player is asked to agree to something, printing an internal key. */
+   QA pass 2 found the chip-remove confirm asking "Stop routing Raw Resources
+   to Raw Resources (chest1)?" -- printing an internal key in a sentence a
+   player reads. X (2026-09-17) took that confirm away and the removal toast
+   is the sentence that names the container now, so it takes the same rule. */
 const contSay = key => {
   if (!key) return "";
   const c = cont(key);
@@ -2271,40 +2305,42 @@ function bucketChip(b, storeKey, ord) {
     x.title = `stop routing ${b.label} to ${contPhrase(storeKey)}`;
     x.setAttribute("aria-label", x.title);
     fk(x, `chip-${b.key}-${storeKey}-remove`);
-    // U14: unrouting was three lines with no guard: no confirm, no toast, no
-    // undo. It now asks on the chip and leaves an undo behind, like every
-    // other destructive click on this page.
-    x.onclick = ev => {
-      ev.stopPropagation();
-      confirmInline(x,
-        `Stop routing ${b.label} to ${contSay(storeKey)}?`,
-        () => {
-          const before = snapshot();
-          S.config.bucket_rules = S.config.bucket_rules.filter(
-            r => !(r.bucket === b.key && r.store === storeKey));
-          // X2 (review 3): this named the "route to..." select the category
-          // gets when it has no destinations left, and that control is only
-          // rendered in that one case -- so removing one link of several, or
-          // emptying a container's row, looked for something that was not
-          // there and focus fell to `<body>`. Three outcomes, three
-          // successors, each chosen from the configuration *after* the
-          // mutation so the key is one that will exist.
-          const left = S.config.bucket_rules;
-          const rowLives = left.some(r => r.store === storeKey);
-          const stillRouted = left.filter(r => r.bucket === b.key);
-          // 6c put the select behind a `+`, so `add-to-<key>` is only in the
-          // DOM while that select is open and this key was stale from the
-          // moment it shipped -- the same defect X2 above fixed once, back
-          // again one commit later. The `+` is what the row always has.
-          focusAfter(rowLives
-            ? `add-to-${storeKey}-open`
-            : (stillRouted.length
-                ? `chip-${b.key}-${stillRouted[0].store}-remove`
-                : `unrouted-${b.key}-route`));
-          revalidate();
-          undoable(`${b.label} no longer goes to ${contLabel(storeKey)}`, before);
-        }, null, null, REMOVE_YN);
+    // U14: unrouting was three lines with no guard: no toast, no undo. X
+    // (2026-09-17): it does not ask either. Routing a category away from a
+    // container edits an unsaved configuration that has an undo in the toast
+    // and a second in the save bar, so the question was a gate in front of a
+    // reversible edit. The press acts.
+    const unroute = () => {
+      const before = snapshot();
+      S.config.bucket_rules = S.config.bucket_rules.filter(
+        r => !(r.bucket === b.key && r.store === storeKey));
+      // X2 (review 3): this named the "route to..." select the category gets
+      // when it has no destinations left, and that control is only rendered
+      // in that one case -- so removing one link of several, or emptying a
+      // container's row, looked for something that was not there and focus
+      // fell to `<body>`. Three outcomes, three successors, each chosen from
+      // the configuration *after* the mutation so the key is one that will
+      // exist.
+      const left = S.config.bucket_rules;
+      const rowLives = left.some(r => r.store === storeKey);
+      const stillRouted = left.filter(r => r.bucket === b.key);
+      // 6c put the select behind a `+`, so `add-to-<key>` is only in the DOM
+      // while that select is open and this key was stale from the moment it
+      // shipped -- the same defect X2 above fixed once, back again one commit
+      // later. The `+` is what the row always has.
+      focusAfter(rowLives
+        ? `add-to-${storeKey}-open`
+        : (stillRouted.length
+            ? `chip-${b.key}-${stillRouted[0].store}-remove`
+            : `unrouted-${b.key}-route`));
+      revalidate();
+      undoable(`${b.label} no longer routed to ${contSay(storeKey)}`, before,
+               false, `chip-${b.key}-${storeKey}-remove`);
     };
+    x.onclick = ev => { ev.stopPropagation(); unroute(); };
+    // and the same removal from the keyboard: the chip's only focusable child
+    // is that X, so Delete or Backspace anywhere in the chip is this.
+    removeKeys(c, unroute, x);
     c.appendChild(x);
   }
   c.dataset.chip = b.key;
@@ -2759,7 +2795,7 @@ function renderRouting() {
   // fold rather than the shelf inside it, so the gesture still has a target
   // when the fold is closed.
   const fold = $("#nd-fold");
-  dropzone(fold || shelf, b => unrouteEverywhere(b, fold || shelf));
+  dropzone(fold || shelf, b => unrouteEverywhere(b));
 
   // ---- A2: the drag-free "remove from everywhere" -----------------------
   const all = $("#unroute-all");
@@ -2791,25 +2827,22 @@ function renderRouting() {
 
 /* The keyboard and pointer path that used to be a drag onto the shelf and
    nothing else (A2, WCAG 2.2 `dragging-alternative`). */
-function unrouteEverywhere(bucket, anchor) {
+function unrouteEverywhere(bucket) {
   const rules = (S.config && S.config.bucket_rules) || [];
   const where = rules.filter(r => r.bucket === bucket).map(r => contLabel(r.store));
   if (!where.length) return;
   const label = bktLabel(bucket);
-  confirmInline(anchor,
-    `Unroute ${label} from ` +
+  // X: a removal, so it acts. The count the question used to state is in the
+  // toast instead, where the undo is.
+  const before = snapshot();
+  S.config.bucket_rules = (S.config.bucket_rules || [])
+    .filter(r => r.bucket !== bucket);
+  focusAfter(`unrouted-${bucket}-route`);
+  revalidate();
+  undoable(`${label} no longer routed to ` +
     (where.length === 1 ? where[0]
-                        : `all ${where.length} of its containers (${where.join(", ")})`) +
-    `? Nothing in it would ever be moved again.`,
-    () => {
-      const before = snapshot();
-      S.config.bucket_rules = (S.config.bucket_rules || [])
-        .filter(r => r.bucket !== bucket);
-      focusAfter(`unrouted-${bucket}-route`);
-      revalidate();
-      undoable(`${label} unrouted from ` +
-        plural(where.length, "container", "containers"), before);
-    }, null, null, REMOVE_YN);
+                        : plural(where.length, "container", "containers")),
+    before, false, `unrouted-${bucket}-route`);
 }
 
 /* Up and down buttons, so an order that can be dragged can also be typed at.
@@ -2888,18 +2921,22 @@ function renderSources() {
     x.title = "remove " + name + " from the sources";
     x.setAttribute("aria-label", x.title);
     fk(x, `src-${i}-remove`);
-    // One sentence, the container's own label in it, under the row it is
-    // about. The anchor is the remove control, not its cell: cancel puts the
-    // focus back on a button rather than on an unfocusable `td`.
-    x.onclick = () => confirmInline(x,
-      `Stop taking items from ${contSay(key)}?`,
-      () => {
-        const before = snapshot();
-        S.config.sources.splice(i, 1);
-        focusAfter(`src-${Math.max(0, i - 1)}-remove`);
-        revalidate();
-        undoable(`${name} is no longer a source`, before);
-      }, null, null, REMOVE_YN);
+    // X (2026-09-17): a question naming the container used to sit under this
+    // row first. A source is a line in an unsaved configuration, so the press
+    // removes it and the toast says which one went and offers the undo; the
+    // undo comes back to this row's own X.
+    const remove = () => {
+      const before = snapshot();
+      S.config.sources.splice(i, 1);
+      // the next row's X, or the add control when the list is empty
+      const left = S.config.sources.length;
+      focusAfter(left ? `src-${Math.min(i, left - 1)}-remove` : "add-source");
+      revalidate();
+      undoable(`${contSay(key)} removed from sources`, before, false,
+               `src-${i}-remove`);
+    };
+    x.onclick = remove;
+    removeKeys(tr, remove, x);
     tools.appendChild(x);
     tr.appendChild(tools);
     fixTarget("sources[" + i + "]", tr, () => x.focus());
@@ -3803,23 +3840,23 @@ function ruleRow(rules, r, i, mine) {
   fk(del, `rule-${i}-remove`);
   del.setAttribute("aria-label", `remove rule ${i + 1}` +
     (r._name ? ", on " + r._name : ""));
-  // Removing a rule was one click with no way back (D17). It asks on the row,
-  // names the rule in the words the sentence uses, and leaves an undo behind.
-  // The anchor is the remove button, not the row's body: `afterend` on the
-  // body put the box inside `.rule`, a nowrap flex row, over the controls it
-  // was asking about. It goes under the whole rule now.
-  del.onclick = () => confirmInline(del,
-    `Remove rule ${i + 1}? ${ruleSentence(r, true)}`,
-    () => {
-      const before = snapshot();
-      rules.splice(i, 1);
-      focusAfter(rules.length
-        ? `rule-${Math.min(i, rules.length - 1)}-remove` : "new-item");
-      revalidate();
-      undoable(`rule ${i + 1} removed`, before);
-      panelTell(`rule ${i + 1} was removed. ` +
-        `The undo button in the save bar puts it back.`);
-    }, null, null, REMOVE_YN);
+  // Removing a rule was one click with no way back (D17), then one click and a
+  // question. X (2026-09-17): the press removes it. What the rule said is in
+  // the panel line under the list and the undo is in the toast, so nothing the
+  // question carried is lost and the hand is not stopped.
+  const remove = () => {
+    const before = snapshot();
+    const said = ruleSentence(r, true);
+    rules.splice(i, 1);
+    focusAfter(rules.length
+      ? `rule-${Math.min(i, rules.length - 1)}-remove` : "new-item");
+    revalidate();
+    undoable(`rule ${i + 1} removed`, before, false, `rule-${i}-remove`);
+    panelTell(`rule ${i + 1} was removed: ${said} ` +
+      `The undo button in the save bar puts it back.`);
+  };
+  del.onclick = remove;
+  removeKeys(del, remove, del);
   tools.appendChild(del);
   wrap.appendChild(tools);
 
@@ -4143,12 +4180,12 @@ $("#add-rule").onclick = async () => {
 /* A2: the drag-free "remove from everywhere". The one gesture on this page
    that had no pointer or keyboard alternative was dragging a category chip
    back onto the shelf; this is a select and a button, in the panel the
-   proposal names, and it asks first like every other destructive click. */
+   proposal names, and it removes on the press with an undo in the toast. */
 $("#unroute-all-btn").onclick = () => {
   const sel = $("#unroute-all");
   if (!sel || !sel.value) return;
   focusAfter("unroute-all-btn");
-  unrouteEverywhere(sel.value, $("#unroute-all-btn"));
+  unrouteEverywhere(sel.value);
 };
 
 $("#add-source-btn").onclick = () => {
@@ -5775,29 +5812,33 @@ function renderCustomBuckets() {
     del.title = "remove this category; every item overridden into it goes back to " +
       "the category the game gives it";
     del.setAttribute("aria-label", "remove the category " + (b.label || b.key));
+    fk(del, `cb-${b.key}-remove`);
     // This one click used to take the routing rules and every override with it,
-    // silently (D17). It now states the count first and leaves an undo behind.
-    del.onclick = () => {
+    // silently (D17), then behind a question (X, 2026-09-17). The press acts
+    // and the toast carries both counts and the undo: the counts were the
+    // reason to ask, and they say as much after the fact.
+    const remove = () => {
       const ov = S.config.item_buckets || {};
       const overrides = Object.keys(ov).filter(k => ov[k] === b.key);
       const routes = (S.config.bucket_rules || []).filter(r => r.bucket === b.key);
-      confirmInline(row,
-        `Remove the category ${b.label || b.key}? It takes ` +
-        plural(overrides.length, "item override", "item overrides") + " and " +
-        plural(routes.length, "routing rule", "routing rules") +
-        ` with it. Those items go back to their generated category.`,
-        () => {
-          const before = snapshot();
-          overrides.forEach(k => delete ov[k]);
-          S.config.custom_buckets.splice(i, 1);
-          S.config.bucket_rules = (S.config.bucket_rules || [])
-            .filter(r => r.bucket !== b.key);
-          saveAndReloadItems();
-          undoable(`${b.label || b.key} removed with ` +
-            plural(overrides.length, "override", "overrides") + " and " +
-            plural(routes.length, "routing rule", "routing rules"), before, true);
-        });
+      const before = snapshot();
+      overrides.forEach(k => delete ov[k]);
+      S.config.custom_buckets.splice(i, 1);
+      S.config.bucket_rules = (S.config.bucket_rules || [])
+        .filter(r => r.bucket !== b.key);
+      // the next row's X, or the box that adds one when this was the last
+      const rest = S.config.custom_buckets;
+      focusAfter(rest.length
+        ? `cb-${(rest[Math.min(i, rest.length - 1)] || {}).key}-remove`
+        : "nb-label");
+      saveAndReloadItems();
+      undoable(`${b.label || b.key} removed with ` +
+        plural(overrides.length, "override", "overrides") + " and " +
+        plural(routes.length, "routing rule", "routing rules"), before, true,
+        `cb-${b.key}-remove`);
     };
+    del.onclick = remove;
+    removeKeys(row, remove, del);
     row.appendChild(del);
     box.appendChild(row);
   });

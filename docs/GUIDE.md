@@ -287,20 +287,22 @@ link beside that **?** opens:
 The longer explanation of all five modes is one click away, under "What keep,
 cap and stock mean".
 
-Nothing destructive is one click. Removing a rule or a custom category,
-unrouting a category everywhere, bulk re-categorising and reverting all ask on
-the spot, and say what they take with them.
+An **X** acts. Removing a rule, a source, a destination from a category or a
+category you added happens on the press: nothing asks first, the toast names
+what went and carries an undo for ten seconds, and **Undo last change** in the
+save bar keeps it after that. The undo puts the list back as it was, order
+included, and leaves the focus on what came back. Delete or Backspace on a
+chip or a row does the same as its X.
 
-![An inline confirmation on the row it affects](images/p3-confirm-delete.png)
+![A removal toast with its undo](images/p3-undo-toast.png)
 
-Revert names what it discards, rather than asking "are you sure?" about nothing
-in particular.
+What still asks is what an undo cannot take back: apply, restore from the
+Backups card, start over or putting a kept configuration back, throwing away
+unsaved changes (Revert and Reload from disk), a bulk change to every selected
+row in Items, and stopping the sorter. Revert names what it discards, rather
+than asking "are you sure?" about nothing in particular.
 
 ![Revert, naming what it would discard](images/p3-revert-confirm.png)
-
-After you say yes, the toast carries an undo for ten seconds.
-
-![The toast with its undo](images/p3-undo-toast.png)
 
 Only the Apply card writes anything, and only after six gates and a timestamped
 backup. It opens with the one warning this tool makes: no guarantees, a save
@@ -922,13 +924,20 @@ opens an add-a-category select, and every chip in it has a remove button.
 
 **Unrouting.** The remove button on a chip drops that one container.
 **Remove from everywhere** at the foot of the No destination card takes a
-category off every container at once, and asks first. Dragging a chip back onto
-that card does the same thing; neither is the only way.
+category off every container at once. Dragging a chip back onto that card does
+the same thing; neither is the only way.
+
+**Removing.** Every X acts on the press, with the undo in the toast.
+**Delete** or **Backspace** with the focus on a chip, on a source row or on a
+row's X is the same removal. Neither key does anything while you are typing in
+a field.
 
 **Order, and focus after a change.** Sources and rules have up and down
 buttons. **Every list in the Categories and Rules sections puts focus back on
 the control you pressed**, so an up or down button can be pressed twice without
-reaching for the mouse in between.
+reaching for the mouse in between. A removal moves the focus to the row that
+took its place, or to the box that adds one when the list is empty, and an undo
+brings it back to what was restored.
 
 **Undo.** The save bar carries **Undo last change** as well as the toast, and
 unlike the toast it does not expire. If you miss the ten seconds, the button is
@@ -972,8 +981,8 @@ belongs to; Escape closes it and hands focus back.
 **Numbers.** Focusing a number field selects the whole value, so you retype it
 rather than nudging it.
 
-**Confirmations.** They open with "no" focused. Escape cancels and returns focus
-where it was.
+**Confirmations.** The ones that are left open with "no" focused. Escape
+cancels and returns focus where it was.
 
 **Filters.** Filter chips are buttons, and each says whether it is on.
 

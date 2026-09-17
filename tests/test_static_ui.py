@@ -71,24 +71,37 @@ def test_what_the_save_section_does_not_draw_is_one_sentence(js):
 # ------------------------------------------------------------------ item 2
 
 
-def test_the_chip_remove_confirm_names_the_container_not_its_key(js):
+def test_the_chip_remove_acts_and_names_the_container_not_its_key(js):
     """QA 2 item 14: `Stop routing Raw Resources to Raw Resources (chest1)?`
-    printed an internal key in the one sentence the player is asked to agree
-    to. Visible prose uses `contOpt`'s rule -- the label, and `label key` only
+    printed an internal key in the one sentence the player reads. X
+    (2026-09-17) took that question away entirely -- "why the fuck does every
+    X command prompt me to confirm? this isn't fucking deletion?" -- so the
+    rule it carried moved to the sentence that replaced it: the removal toast.
+    Visible prose uses `contOpt`'s rule -- the label, and `label key` only
     where two containers in this save read the same name -- while the `title`
-    and the accessible name keep the key, which is the rule the rest of the
-    page already follows.
+    and the accessible name keep the key.
     """
-    line = re.search(r'^\s*`Stop routing \$\{b\.label\} to (?P<what>[^`]*)`,$',
-                     js, re.M)
-    assert line, "the chip-remove confirm sentence moved or was rewritten"
-    assert line.group("what") == "${contSay(storeKey)}?"
-    # and `contSay` is `contOpt`'s rule, from a key
-    fn = re.search(r'const contSay = key => \{(?P<body>.*?)\n\};', js, re.S)
-    assert fn and "contOpt(c)" in fn.group("body")
+    assert "Stop routing ${b.label}" not in js, \
+        "the chip-remove question is back"
+    fn = re.search(r"    const unroute = \(\) => \{(?P<body>.*?)\n    \};",
+                   js, re.S)
+    assert fn, "the chip's removal moved or was rewritten"
+    body = fn.group("body")
+    assert "confirmInline" not in body, "a removal does not ask"
+    # it edits the configuration on the press
+    assert "S.config.bucket_rules = S.config.bucket_rules.filter(" in body
+    # and the toast says what went, with the undo and the key to come back to
+    assert "undoable(`${b.label} no longer routed to ${contSay(storeKey)}`" \
+        in body
+    assert "`chip-${b.key}-${storeKey}-remove`);" in body
+    # `contSay` is `contOpt`'s rule, from a key
+    cs = re.search(r'const contSay = key => \{(?P<body>.*?)\n\};', js, re.S)
+    assert cs and "contOpt(c)" in cs.group("body")
     # the attribute keeps the key: that is deliberate, not an oversight
     assert ('x.title = `stop routing ${b.label} to ${contPhrase(storeKey)}`'
             in js)
+    # Delete and Backspace on the chip are the same removal
+    assert "removeKeys(c, unroute, x);" in js
 
 
 # ------------------------------------------------------------------ item 5
@@ -259,6 +272,11 @@ def test_no_gate_label_prints_a_plan_fingerprint(js):
 # of thirteen rows, and the remove confirmation was a 73 px column of wrapped
 # words 292 px tall with 239 px of itself outside that scroller. After: 252 px
 # and seven rows, the confirmation 283x71 with nothing clipped.
+#
+# Then, the same day: "why the fuck does every X command prompt me to confirm?
+# this isn't fucking deletion?" The readable box was the wrong control. Every
+# X in Categories and Rules acts on the press now and the toast carries the
+# undo; what still asks is what an undo cannot take back.
 
 
 @pytest.fixture(scope="module")
@@ -266,13 +284,14 @@ def html():
     return _read("index.html")
 
 
-def test_a_source_row_carries_a_remove_control_and_one_readable_sentence(js):
-    """The confirmation names the container the way the rest of the page names
-    one -- the label, its key only on a collision -- and says one thing.
-
-    It also anchors on the remove button rather than on the cell that holds
-    it: `close()` puts the focus back on the anchor, and a `td` cannot take
-    it, so cancel used to drop focus to `<body>`.
+def test_a_source_row_carries_a_remove_control_that_acts_on_the_press(js):
+    """The confirmation under the row was readable in the end, and then it was
+    the wrong control altogether (X, 2026-09-17): a source is a line in a
+    configuration this page has not saved yet, with an undo in the toast and a
+    second in the save bar, so the question was a gate in front of a
+    reversible edit. The press removes the row and the toast names it the way
+    the rest of the page names a container -- the label, its key only on a
+    collision.
     """
     fn = re.search(r"function renderSources\(\) \{(?P<body>.*?)\n\}", js, re.S)
     assert fn, "renderSources moved or was rewritten"
@@ -280,21 +299,25 @@ def test_a_source_row_carries_a_remove_control_and_one_readable_sentence(js):
     # a remove control on every row, with a stable focus key per index
     assert 'const x = el("button", "iconbtn del");' in body
     assert "fk(x, `src-${i}-remove`);" in body
-    # the confirmation: anchored on that control, one sentence, the label in it
-    assert "confirmInline(x," in body, \
-        "the confirmation anchors on the remove control"
-    assert "`Stop taking items from ${contSay(key)}?`" in body
-    # one sentence: no second clause, and `contSay` is the visible-prose rule
-    sentence = re.search(r"`Stop taking items from \$\{contSay\(key\)\}\?`",
-                         body)
-    assert sentence and body.count("Stop taking items") == 1
-    assert "Stop draining" not in js, "the two-sentence version is gone"
+    # no question in front of it, and none of the old sentences anywhere
+    assert "confirmInline" not in body, "removing a source does not ask"
+    assert "Stop taking items" not in js
+    assert "Stop draining" not in js
+    # the press edits the configuration
+    assert "S.config.sources.splice(i, 1);" in body
     # the key stays in the attributes, where it costs no layout
     assert "nm.title = c ? `${name} (${key})` : name;" in body
-    # and the buttons say what the press does
-    assert 'const REMOVE_YN = { yes: "yes, remove", no: "cancel" };' in js
-    assert re.search(r"undoable\(`\$\{name\} is no longer a source`, before\);"
-                     r"\s*\}, null, null, REMOVE_YN\);", body)
+    # the toast: the container in visible-prose form, the undo, and the row to
+    # come back to when it is pressed
+    assert re.search(r"undoable\(`\$\{contSay\(key\)\} removed from sources`, "
+                     r"before, false,\s*`src-\$\{i\}-remove`\);", body)
+    # focus goes to the row that took this one's place, or to the add control
+    assert ('focusAfter(left ? `src-${Math.min(i, left - 1)}-remove` '
+            ': "add-source");') in body
+    # and the row answers Delete and Backspace with the same removal
+    assert "removeKeys(tr, remove, x);" in body
+    # the pair of labels a removal needed is gone with the questions
+    assert "REMOVE_YN" not in js
 
 
 def test_a_confirmation_in_a_list_goes_under_the_whole_row(js, css):
@@ -302,6 +325,11 @@ def test_a_confirmation_in_a_list_goes_under_the_whole_row(js, css):
     anonymous table cell as wide as that cell, which is how a 33-character
     question became 73 px wide and 292 px tall inside a 63 px scroller. The
     box goes under the row now, in one spanning cell.
+
+    No question lands in a row today -- X took the removals' questions away
+    and what asks is a control in a block -- but the placement rule belongs to
+    `confirmInline`, not to a caller, so a question that lands in a row again
+    must still be readable.
     """
     fn = re.search(r"function confirmRowHost\(anchor\) \{(?P<body>.*?)\n\}",
                    js, re.S)
@@ -316,7 +344,7 @@ def test_a_confirmation_in_a_list_goes_under_the_whole_row(js, css):
     assert 'const row = anchor.closest(".rule");' in host
     # the insertion: a spanning cell, and the row is what gets removed again
     cf = re.search(r"function confirmInline\(anchor, question, onYes, tick, "
-                   r"whyOff, labels\) \{(?P<body>.*?)\n\}", js, re.S)
+                   r"whyOff\) \{(?P<body>.*?)\n\}", js, re.S)
     assert cf, "confirmInline's signature moved"
     box = cf.group("body")
     assert 'const tr = el("tr", "confirm-row");' in box
@@ -355,8 +383,7 @@ def test_the_no_destination_shelf_is_the_one_behind_a_fold(html, css, js):
                      r"\s*if \(f && !f\.open\) f\.open = true;", js)
     assert 'if (/^unrouted-/.test(key)) openShelf();' in js
     # the drop target is the fold, so the drag gesture survives it being shut
-    assert "dropzone(fold || shelf, b => unrouteEverywhere(b, fold || shelf));" \
-        in js
+    assert "dropzone(fold || shelf, b => unrouteEverywhere(b));" in js
 
 
 def test_no_row_in_the_sources_list_is_under_the_sheet_floor(css):
@@ -372,3 +399,91 @@ def test_no_row_in_the_sources_list_is_under_the_sheet_floor(css):
     assert re.search(r"#tab-categories \.colstack>\.card>\.hd,\s*"
                      r"#tab-categories \.colstack>\.card \.nd-fold>summary\{"
                      r"padding:4px var\(--s3\)\}", css)
+
+
+# --------------------------------------- every X acts, 2026-09-17 (owner)
+#
+# "why the fuck does every X command prompt me to confirm? this isn't fucking
+# deletion?" It was not: every one of those X controls edited a configuration
+# this page had not written anywhere, with an undo in the toast and a second
+# in the save bar. The question was a gate in front of a reversible edit, four
+# presses deep into a session of routing.
+
+
+def test_the_things_that_ask_are_the_ones_an_undo_cannot_take_back(js):
+    """The inventory of confirmations, as an assertion.
+
+    What is left asks because an undo cannot take it back: apply (its own tick
+    and a restore under it), a restore from the Backups card, start over or
+    putting a kept configuration back, throwing away unsaved changes -- revert,
+    and reload from disk, which is the same question about the same changes --
+    a bulk change to every selected row in Items, and stopping the sorter,
+    which ends the session. A removal in Categories or Rules is not in this
+    list, and a new one added to it fails here.
+    """
+    anchors = sorted(set(re.findall(r"confirmInline\(([^,]+),", js)))
+    assert anchors == [
+        "$(\"#config-reload\")",      # throw away unsaved changes, re-read
+        "$(\"#ib-bulk-apply\")",      # re-categorise the selected rows
+        "$(\"#revert\")",             # throw away unsaved changes
+        "$(\"#start-over\")",         # replace the configuration in use
+        "anchor",                     # stop the sorter; restore a backup
+        "btn",                        # put a kept configuration back
+    ], anchors
+    # and the four sentences that used to ask about a removal are gone
+    for sentence in ("Stop routing ${b.label}", "Stop taking items from",
+                     "Remove rule ${i + 1}?", "Remove the category ",
+                     "Unroute ${label} from"):
+        assert sentence not in js, sentence
+
+
+def test_a_removal_edits_the_configuration_and_leaves_an_undo(js):
+    """Each X mutates `S.config` on the press and hands `undoable` the state
+    from before it, which is a deep copy: order is part of what comes back,
+    not just membership. The toast is where the undo is offered, because that
+    is where the hand already is.
+    """
+    # the undo snapshot is the whole configuration, copied
+    assert ("function snapshot() { return JSON.parse(JSON.stringify(S.config)); }"
+            in js)
+    fn = re.search(r"function undoable\(label, before, persisted, focus\) \{"
+                   r"(?P<body>.*?)\n\}", js, re.S)
+    assert fn, "undoable's signature moved"
+    body = fn.group("body")
+    assert 'toast(label, "", { label: "undo", fn: doUndo });' in body
+    # and the undo puts that exact configuration back
+    un = re.search(r"async function doUndo\(\) \{(?P<body>.*?)\n\}", js, re.S)
+    assert un and "S.config = u.before;" in un.group("body")
+    # every removal names the label the toast says and where the undo lands
+    for label in ("`${b.label} no longer routed to ${contSay(storeKey)}`",
+                  "`${contSay(key)} removed from sources`",
+                  "`rule ${i + 1} removed`"):
+        assert "undoable(" + label in js, label
+    for key in ("`chip-${b.key}-${storeKey}-remove`);",
+                "`src-${i}-remove`);",
+                "`rule-${i}-remove`);",
+                "`cb-${b.key}-remove`);"):
+        assert key in js, key
+    # the undo goes back to the restored thing, not to the save bar
+    assert 'focusAfter(u.focus || "revert");' in js
+
+
+def test_delete_and_backspace_remove_what_the_x_removes(js):
+    """The same removal from the keyboard, with no question either. The two
+    keys belong to whatever field has the focus, so a Backspace in a rule's
+    number field is a Backspace: only the node, its own remove button and the
+    inert spans between them answer them.
+    """
+    fn = re.search(r"function removeKeys\(node, remove, btn\) \{"
+                   r"(?P<body>.*?)\n\}", js, re.S)
+    assert fn, "removeKeys moved or was rewritten"
+    body = fn.group("body")
+    assert 'if (e.key !== "Delete" && e.key !== "Backspace") return;' in body
+    assert 'tag === "INPUT" || tag === "SELECT"' in body
+    assert 'tag === "TEXTAREA" || tag === "BUTTON" || tag === "A") return;' in body
+    assert "t.isContentEditable" in body
+    # a chip, a source row, a rule's remove button and a custom category row
+    assert "removeKeys(c, unroute, x);" in js
+    assert "removeKeys(tr, remove, x);" in js
+    assert "removeKeys(del, remove, del);" in js
+    assert "removeKeys(row, remove, del);" in js
