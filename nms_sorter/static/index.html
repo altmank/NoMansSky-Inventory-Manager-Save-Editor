@@ -309,8 +309,10 @@
                          autocomplete="off" spellcheck="false" role="combobox"
                          aria-expanded="false" aria-controls="suggest"
                          aria-autocomplete="list"></label>
-                <div class="suggest hidden" id="suggest" role="listbox"
-                     aria-label="Matching items"></div>
+                <!-- The list itself lives in #popup-layer at the end of the
+                     document, not here: this section's body is
+                     `overflow:hidden` and cut the list off 53 px under the
+                     input. `aria-controls` reaches it by id from anywhere. -->
               </div>
               <button class="btn" id="add-rule">Add rule</button>
               <!-- X4/X15: on the control's own line rather than under it. Two
@@ -604,6 +606,13 @@
 </div>
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- Every popup that hangs off a control inside a scrolling card lives here,
+     outside every `overflow:hidden` ancestor, and is placed against the
+     viewport by the code that opens it. The layer has no size of its own. -->
+<div id="popup-layer" class="poplayer">
+  <div class="suggest hidden" id="suggest" role="listbox" aria-label="Matching items"></div>
+</div>
 <script src="/static/app.js"></script>
 </body>
 </html>

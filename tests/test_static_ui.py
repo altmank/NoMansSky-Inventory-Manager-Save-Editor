@@ -487,3 +487,82 @@ def test_delete_and_backspace_remove_what_the_x_removes(js):
     assert "removeKeys(tr, remove, x);" in js
     assert "removeKeys(del, remove, del);" in js
     assert "removeKeys(row, remove, del);" in js
+
+
+# ------------------------- X31: the add-a-rule list opened into a 53 px gap
+
+
+def test_the_suggestion_list_is_not_inside_the_card_that_clips_it(html, css, js):
+    """Measured at 1280x720 with the rule editor unscrolled: the input's
+    bottom sat at 616, `#tab-rules>.stagebody` is `overflow:hidden` and ends
+    at 673, and the 280 px list opened at 620 -- 53 px of it visible, the
+    other 227 unreachable by mouse or eye. An absolutely positioned popup
+    inside a scrolling card cannot be fixed by z-index; it has to leave the
+    card.
+
+    So the element is a child of the document's popup layer, fixed to the
+    viewport, and `placeSuggest()` puts it where the input is. After: top 304,
+    bottom 584 at 1280x720, and top 352, bottom 632 at 1600x900 -- both whole.
+    """
+    # the list is in the layer, and the layer is a child of body
+    assert re.search(
+        r'<div id="popup-layer" class="poplayer">\s*'
+        r'<div class="suggest hidden" id="suggest" role="listbox"', html), \
+        "the suggestion list left #popup-layer"
+    layer = re.search(r'<div id="popup-layer".*?</div>\s*</div>', html, re.S)
+    assert layer, "#popup-layer moved or was rewritten"
+    assert "</main>" in html[:layer.start()], \
+        "#popup-layer must sit outside the page's sections, not in one"
+    # and no copy of it was left behind in the combo
+    combo = re.search(r'<div class="combo">(?P<body>.*?)\n\s*</div>', html, re.S)
+    assert combo and 'id="suggest"' not in combo.group("body"), \
+        "the combo holds the input and its label only"
+    # the input still points at it, which works across the document by id
+    assert 'aria-controls="suggest"' in html
+
+    # the layer has no box and is not a stacking context: a popup inside it
+    # has to stack against the page, not against its siblings
+    rule = re.search(r'\n\.poplayer\{(?P<body>[^}]*)\}', css)
+    assert rule, "the .poplayer rule moved or was renamed"
+    assert "position:fixed" in rule.group("body")
+    assert "width:0" in rule.group("body") and "height:0" in rule.group("body")
+    assert "z-index" not in rule.group("body")
+
+    # the list itself is placed against the viewport, not against an ancestor
+    sug = re.search(r'\n\.suggest\{(?P<body>[^}]*)\}', css)
+    assert sug, "the .suggest rule moved or was renamed"
+    assert "position:fixed" in sug.group("body")
+    assert "position:absolute" not in sug.group("body")
+    assert "top:100%" not in sug.group("body"), \
+        "an anchor-relative offset means it is back inside the card"
+
+    # placed from the input's own rect, flipped to whichever side has the room
+    fn = re.search(r"function placeSuggest\(\) \{(?P<body>.*?)\n\}", js, re.S)
+    assert fn, "placeSuggest moved or was rewritten"
+    body = fn.group("body")
+    assert "inp.getBoundingClientRect()" in body
+    assert "const up = wanted > below && above > below;" in body
+    # and capped to that side, so neither edge can cut it
+    assert "if (wanted > room) box.style.maxHeight = room + \"px\";" in body
+    assert "Math.max(8, Math.min(top, window.innerHeight - h - 8))" in body
+
+    # fixed to the viewport means it has to be told when the viewport moves
+    track = re.search(r"function openSuggestTracking\(\) \{(?P<body>.*?)\n\}",
+                      js, re.S)
+    assert track, "openSuggestTracking moved or was rewritten"
+    assert 'window.addEventListener("scroll", placeSuggest, true);' in track.group("body")
+    assert 'window.addEventListener("resize", placeSuggest);' in track.group("body")
+    close = re.search(r"function closeSuggest\(\) \{(?P<body>.*?)\n\}", js, re.S)
+    assert close, "closeSuggest moved or was rewritten"
+    assert 'window.removeEventListener("scroll", placeSuggest, true);' in close.group("body")
+    assert 'window.removeEventListener("resize", placeSuggest);' in close.group("body")
+    # U30's aria cleanup is still the same close
+    assert 'inp.setAttribute("aria-expanded", "false");' in close.group("body")
+    assert 'inp.removeAttribute("aria-activedescendant");' in close.group("body")
+
+    # a click on a suggestion is not an outside click any more: the list is no
+    # longer a descendant of the combo the handler tested
+    assert 'if (!e.target.closest(".combo, #suggest")) closeSuggest();' in js
+    # and leaving the section closes it, because hiding the panel no longer can
+    tab = re.search(r"function showTab\(name\) \{(?P<body>.*?)\$\$", js, re.S)
+    assert tab and "closeSuggest();" in tab.group("body")

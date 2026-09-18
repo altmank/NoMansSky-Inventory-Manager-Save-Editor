@@ -20,6 +20,14 @@ A data-only regeneration after a game patch bumps the patch version and
   unsaved changes, a bulk change to the selected rows in Items, and stopping
   the sorter.
 
+### Fixed
+
+- The list of matching items under "Add a rule for" is whole. It used to open
+  downward inside the Rules card, which cut it off 53 px under the box: the
+  first row was readable and the other thirty-nine were not. It opens above
+  the box now whenever there is more room there, follows the box when the
+  section scrolls, and shortens to fit rather than run off an edge.
+
 ## [1.0.1] - 2026-09-17
 
 ### Fixed

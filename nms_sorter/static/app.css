@@ -499,8 +499,18 @@ select.chip-route{flex:0 1 auto;max-width:172px;font-size:12px;
 .del:hover{color:var(--danger)}
 .combo{position:relative;display:flex;flex:1 1 260px}
 .combo input{width:auto}
-.suggest{position:absolute;top:100%;left:0;z-index:50;background:var(--surface-2);
-  border:1px solid var(--line-2);border-radius:var(--r);margin-top:var(--s1);
+/* The popup layer: no box of its own, so it cannot move or clip anything.
+   No `z-index` here either -- it must not become a stacking context, or the
+   popups inside it would all stack together rather than against the page. */
+.poplayer{position:fixed;left:0;top:0;width:0;height:0}
+/* X31: the suggestion list was `position:absolute` inside `.combo`, and
+   `#tab-rules>.stagebody` is `overflow:hidden`: with the rule editor scrolled
+   down, 280 px of list opened into a 53 px gap and the rest was unreachable.
+   Fixed to the viewport and placed by placeSuggest(), which sets
+   left/top/width/max-height and flips it above the input when below is the
+   smaller side. Everything else about it is still here. */
+.suggest{position:fixed;left:0;top:0;z-index:50;background:var(--surface-2);
+  border:1px solid var(--line-2);border-radius:var(--r);
   max-height:280px;overflow:auto;min-width:330px}
 .suggest div{padding:6px var(--s3);cursor:pointer;font-size:12px;display:flex;
   gap:var(--s2);align-items:center;min-height:26px}

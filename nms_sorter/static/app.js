@@ -4040,6 +4040,8 @@ $("#new-item").addEventListener("input", e => {
     });
     box.classList.remove("hidden");
     $("#new-item").setAttribute("aria-expanded", "true");
+    openSuggestTracking();
+    placeSuggest();         // the list has no position until it is placed
     syncAddRule();          // D3: the exact-match test needs this answer
   }, 130);
 });
@@ -4061,11 +4063,56 @@ $("#new-item").addEventListener("keydown", e => {
   }
 });
 
+/* X31: the list is in #popup-layer, fixed to the viewport, because the Rules
+   section's body is `overflow:hidden` and clipped an absolutely positioned
+   list to a 53 px sliver. Placed against the input's own rect: below it when
+   below is the side with the room, above it when it is not, clamped into the
+   viewport either way, and capped to the side it landed on so nothing can
+   open past an edge. Position only -- what the list looks like is in .suggest.
+
+   Not the same code as placePicker(): that popup is a dialog with its own
+   search box, hung off a button anywhere in the rule list, and it owns its
+   own element. This one is one fixed list bound to one input. Two twenty-line
+   placers read better than one that branches on which it is. */
+function placeSuggest() {
+  const box = $("#suggest"), inp = $("#new-item");
+  if (!box || box.classList.contains("hidden")) return;
+  if (!inp || !inp.isConnected) { closeSuggest(); return; }
+  const r = inp.getBoundingClientRect();
+  // An input scrolled out of its own card takes the list with it: a list
+  // floating beside nothing is worse than no list.
+  // A zero rect is an input with no layout at all -- its section was hidden.
+  if (!r.width && !r.height) { closeSuggest(); return; }
+  if (r.bottom < 0 || r.top > window.innerHeight) { closeSuggest(); return; }
+  box.style.maxHeight = "";
+  const w = Math.max(330, Math.min(r.width, window.innerWidth - 16));
+  box.style.width = w + "px";
+  box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+  const wanted = box.offsetHeight;
+  const below = window.innerHeight - r.bottom - 12;
+  const above = r.top - 12;
+  const up = wanted > below && above > below;
+  const room = Math.max(72, Math.floor(up ? above : below));
+  if (wanted > room) box.style.maxHeight = room + "px";
+  const h = box.offsetHeight;
+  const top = up ? r.top - h - 4 : r.bottom + 4;
+  box.style.top = Math.max(8, Math.min(top, window.innerHeight - h - 8)) + "px";
+}
+/* Fixed to the viewport means fixed where the viewport was: the list has to be
+   told when the page, the card's own scroller or the window moves under it.
+   Capture, because the input sits in a scrolling box of its own. */
+function openSuggestTracking() {
+  window.addEventListener("scroll", placeSuggest, true);
+  window.addEventListener("resize", placeSuggest);
+}
+
 /* U30: `aria-activedescendant` pointing at an option in a listbox that is no
    longer open is a dangling reference, and a reader reads it. */
 function closeSuggest() {
   const box = $("#suggest");
   box.classList.add("hidden");
+  window.removeEventListener("scroll", placeSuggest, true);
+  window.removeEventListener("resize", placeSuggest);
   const inp = $("#new-item");
   inp.setAttribute("aria-expanded", "false");
   inp.removeAttribute("aria-activedescendant");
@@ -6824,6 +6871,9 @@ function sectionFor(where) {
 
 function showTab(name) {
   if (!TAB_NAMES.includes(name)) return;
+  // The suggestion list is in #popup-layer, so hiding the Rules panel no
+  // longer hides it: leaving a section closes it.
+  closeSuggest();
   $$(".tab").forEach(x => {
     const on = x.dataset.tab === name;
     x.classList.toggle("active", on);
@@ -7008,7 +7058,9 @@ window.addEventListener("resize", stickyOffsets);
 stickyOffsets();
 
 document.addEventListener("click", e => {
-  if (!e.target.closest(".combo")) closeSuggest();
+  // `#suggest` counts as inside: it is a child of #popup-layer now, not of the
+  // combo, and a click on a suggestion must not be an outside click.
+  if (!e.target.closest(".combo, #suggest")) closeSuggest();
 });
 
 syncAddRule();
