@@ -9,6 +9,8 @@ A data-only regeneration after a game patch bumps the patch version and
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-19
+
 ### Changed
 
 - An X acts. Removing a rule, a source, a destination from a category or a

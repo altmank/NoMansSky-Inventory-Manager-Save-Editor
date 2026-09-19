@@ -5,4 +5,4 @@ package, the chosen save folder, the settings/config files and the backup
 folder is read or written.
 """
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
