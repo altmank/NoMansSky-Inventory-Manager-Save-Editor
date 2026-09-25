@@ -17,7 +17,7 @@ Users are not at risk while you take your time.
 | For | Need |
 |---|---|
 | `tools/hgpak.py`, step 1 | `zstandard`. The `.pak` payloads are HGPAK v2 with raw Zstd frames, not PSARC. `python -m pip install zstandard`, or `pip install -e ".[data]"` |
-| MBINCompiler, step 2 | the .NET 8 runtime, and an MBINCompiler matching the game build. The version that shipped with the current data is 7.02.0.1, decompiled against game build 25233815; the data is stamped 25320008 because every input was re-extracted from that build's paks and compared byte for byte |
+| MBINCompiler, step 2 | the .NET 8 runtime, and an MBINCompiler matching the game build. The current data was extracted from Steam build 25442159 and decompiled with 7.04.0-pre1 |
 | steps 3 to 7 | nothing beyond the standard library |
 
 `nms-db/` is around 128 MB of Hello Games' content. It is not in this

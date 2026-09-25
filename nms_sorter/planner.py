@@ -188,7 +188,7 @@ class VCont(object):
         v._ident = src_slot.ident
         v.removed = False
         v.created = True
-        v.source_node = src_slot.node
+        v.source_node = src_slot.source_node if src_slot.created else src_slot.node
         self.slots.append(v)
         self.touched = True
         return v
@@ -245,12 +245,12 @@ class Rules(object):
         pinned without pinning the family."""
         plain = text.strip_caret(raw)
         stem = text.stem(raw)
-        for i, rule in self.item_rules:
-            target = (rule.get("item") or "").strip()
-            if not target:
-                continue
-            if target == plain or target == stem:
-                return i, rule
+        # Specificity precedes priority. Within either class, the pre-sorted
+        # list still resolves ties by priority and then configuration order.
+        for target in (plain, stem) if plain != stem else (plain,):
+            for i, rule in self.item_rules:
+                if (rule.get("item") or "").strip() == target:
+                    return i, rule
         return None, None
 
     def decide(self, raw, src_key):
@@ -516,6 +516,10 @@ def build_plan(save, cfg, strict=False):
                 continue
             groups = {}
             for s in v.live():
+                # Unknown items must retain their slots in every phase, not
+                # only when the later routing loop encounters them.
+                if idb.bucket_of(s.raw) == UNSORTED:
+                    continue
                 groups.setdefault(s.ident, []).append(s)
             for ident, members in groups.items():
                 if len(members) < 2:
@@ -673,6 +677,12 @@ def build_plan(save, cfg, strict=False):
             chain, chain_notes = [], []
             for key in dec["dsts"]:
                 if key == src_key:
+                    # A source already in the chain may fill earlier legs,
+                    # but must not drain itself into a later overflow leg.
+                    # Stock is explicitly two-sided: its surplus still goes
+                    # onward after the source's keep floor is applied.
+                    if dec["stock_in"] != src_key:
+                        break
                     chain_notes.append("%s is the source itself, skipped" % key)
                     continue
                 cv = V.get(key)
@@ -701,7 +711,7 @@ def build_plan(save, cfg, strict=False):
                     continue
                 chain.append((key, cv))
             if not chain:
-                only_self = (len(dec["dsts"]) == 1 and dec["dsts"][0] == src_key)
+                only_self = (src_key in dec["dsts"] and dec["stock_in"] != src_key)
                 if only_self:
                     plan.skips.append(dict(base, op="skip", reason=(
                         "already in %s, which is where the rule sends it" % src_key),

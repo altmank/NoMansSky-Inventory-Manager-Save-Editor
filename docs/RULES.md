@@ -157,7 +157,7 @@ stay exactly where they are. Validation says so once, for all of them:
 | `keep_in` | string | scope the floor to one container. Without it the floor guards **every** source it meets |
 | `fill` | int | a ceiling on the destination: stop once it holds this many |
 | `move` | int | a cap on how much of this item may move in one run, across every source |
-| `priority` | int | rules are consulted in ascending priority, then in config order. Default 100 |
+| `priority` | int | within exact-id matches or family matches, rules are consulted in ascending priority, then in config order. Exact-id matches are considered first. Default 100 |
 | `stock` | int | keep one container topped up to this number. Needs `stock_in` |
 | `stock_in` | string | the container `stock` applies to. Needs `stock` |
 | `pin` | bool | never move this item |
@@ -459,9 +459,17 @@ is what makes a duplicated item movable at all. It refuses in three cases:
 The last one rolls the group back untouched. A group already as consolidated as
 pouring can make it is left alone and writes no byte.
 
+Items in `unsorted` are excluded from merging, including in containers that are
+not selected as sources. Their amounts and slot positions remain unchanged.
+
 **Phase 2, moves**, merges **into existing stacks before creating any**. Across
 two containers the identity match ignores `MaxAmount`, because the same product
 is capped at 10 in the exosuit and 20 in a chest.
+
+When a source is also in its destination chain, it can top up earlier destinations
+but does not drain into later overflow destinations. Items that have reached their
+destination stay there on subsequent runs. An explicit `stock` rule is the
+exception: it retains its requested stock and sends the surplus onward.
 
 Only when every matching stack in the destination is at its cap does a move
 create a new one, in a free cell from `ValidSlotIndices`, and only while

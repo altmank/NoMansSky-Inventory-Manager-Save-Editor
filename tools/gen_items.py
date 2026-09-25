@@ -1,7 +1,7 @@
 """Read the game's own tables, not a third-party jar.
 
 Inputs, all extracted from GAMEDATA\\PCBANKS by `tools/hgpak.py` and decompiled
-by MBINCompiler (7.02.0.1, decompiled against game build 25233815):
+by the MBINCompiler version pinned in `nms_sorter/data/DATA_VERSION`:
 
     <tables>/*.MXML   the reality tables: substance, product, technology,
                       procedural technology, consumable, legacy, base building

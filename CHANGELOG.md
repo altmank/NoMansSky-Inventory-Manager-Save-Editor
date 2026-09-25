@@ -9,6 +9,35 @@ A data-only regeneration after a game patch bumps the patch version and
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply checks the backed-up save and metadata again immediately before each
+  file replacement. Detected concurrent changes, including added or deleted metadata,
+  stop the write and preserve the other writer's bytes. Failures after the save
+  was written remain marked as such; unexpected transform errors no longer
+  leave their backup marked as an unfinished run.
+- A container selected as both source and destination no longer passes items
+  onward into a later overflow container. Earlier destinations can still be
+  topped up, and explicit stock rules still send their surplus onward.
+- Unknown items retain every slot and amount during duplicate merging as well
+  as routing and tidying.
+- Exact procedural-item rules take precedence over family rules, including
+  pins. Priority and list order resolve competing rules of the same specificity.
+- A file changed while being decoded invalidates the cached document on the
+  next read instead of attaching the newer file's signature to old contents.
+- The data generator can write its results to another Windows drive.
+
+### Changed
+
+- Save refresh and health read backup metadata without hashing every backup.
+  The Backups screen and Restore still perform full content verification.
+- Release publishing depends on the main test matrix and documentation tests.
+- Regenerated item data from Steam build 25442159 with MBINCompiler 7.04.0-pre1.
+  Added `BANNER_MAINFAM` and `BANNER_NMSA` to Cosmetics & Appearance. Existing
+  item names, bucket assignments and stack multipliers are unchanged. English
+  names for the two new IDs are absent from the localization inputs, so the
+  existing ID fallback is retained.
+
 ## [1.0.2] - 2026-09-19
 
 ### Changed

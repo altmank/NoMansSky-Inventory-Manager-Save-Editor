@@ -626,10 +626,19 @@ A backup is taken automatically before every apply, and nothing else ever
 writes to the backup folder. They live in `%LOCALAPPDATA%\NMS-Sorter\backups\`,
 outside the game's own folder, so Steam Cloud never sees them.
 
+Apply compares the save and metadata with that backup immediately before each
+replacement. If it detects another writer's change to either file, Apply stops and reports
+whether it had already written the save. Keep other editors closed during Apply;
+the content check and replacement are separate filesystem operations.
+
 The **Backups** card is in the Plan section, below the Apply card. It is
 always visible, plan or no plan, because the reason to come looking for it is
 usually that an apply has already happened. The line under **Refresh** always
 names the folder they are in.
+
+Refreshing this card verifies backup contents. Ordinary save refresh and the
+health panel only read backup metadata, avoiding a full scan of every backup.
+Restore always verifies the selected backup before writing anything.
 
 ![The Backups card](images/backups-card.png)
 

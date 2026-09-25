@@ -135,7 +135,6 @@ class App(object):
         self.sync_taxonomy()
         self._save = None
         self._save_path = None
-        self._save_token = None
         if self.created:
             notes.extend(self.fit_default_to_save())
         #: what `cfgmod.load` and `fit_default_to_save` had to say about the
@@ -250,7 +249,6 @@ class App(object):
             if "save_folder" in changed:
                 self._save = None
                 self._save_path = None
-                self._save_token = None
                 self._roundtrip = (None, None)
                 self.clear_plans()
             root = new.resolved_backup_folder()
@@ -284,7 +282,7 @@ class App(object):
 
     # ------------------------------------------------------------- backups
 
-    def list_backups(self):
+    def list_backups(self, verify=True):
         """Every backup folder, newest first, or `[]`.
 
         The `[]` is for a backup root that cannot be listed -- a folder on a
@@ -293,6 +291,8 @@ class App(object):
         every poll, and neither has anywhere to put an exception.
         """
         try:
+            if not verify:
+                return safety.list_backups(self.backup_root, verify=False) or []
             return safety.list_backups(self.backup_root) or []
         except Exception as exc:
             log.warning("the backup folder %s could not be listed: %s",
@@ -425,25 +425,16 @@ class App(object):
             # way, so a same-length edit written back with the original
             # timestamp is a miss instead of a hit.
             #
-            # `_save_token` is the belt to that braces: a build whose
-            # `signature()` carries no hash cannot compare equal to a
-            # hash-bearing one, and reloading on every request because of that
-            # would be a 206 ms decode per poll. Both differing is what makes
-            # it stale, so the guard is correct whichever shape `signature()`
-            # has.
+            # Only the parsed object's signature can identify what is cached.
+            # Sampling the disk again after decoding can capture a newer file
+            # and incorrectly bless the older object as current.
             token = disk_signature(path)
             cached = (self._save.signature()
                       if self._save is not None and self._save_path == path
                       else None)
-            if reload or cached is None \
-                    or (cached != token and self._save_token != token):
+            if reload or cached != token:
                 self._save = SaveFile(path)
                 self._save_path = path
-                # recomputed, not the token from above: this one describes the
-                # file as of *after* the read, so a write that landed while the
-                # save was being decoded is caught by the next request rather
-                # than being recorded as the state we loaded.
-                self._save_token = disk_signature(path)
                 self.clear_plans()
             return self._save
 
@@ -591,7 +582,7 @@ class Degraded(object):
     def first_run(self):
         return not self.settings.folder_ok()
 
-    def list_backups(self):
+    def list_backups(self, verify=True):
         return []
 
     def prune_backups(self):
