@@ -922,7 +922,7 @@ def backup(save_path, backup_root, report):
     return folder, copied
 
 
-def write_atomic(path, data, what="write", after_write=False):
+def write_atomic(path, data, what="write", after_write=False, before_replace=None):
     """Step 9. Same directory, fsync, replace: a crash mid-write cannot leave a
     truncated save.
 
@@ -965,6 +965,11 @@ def write_atomic(path, data, what="write", after_write=False):
                 fh.write(data)
                 fh.flush()
                 os.fsync(fh.fileno())
+            # Revalidate after the potentially slow temp write and fsync.
+            # This narrows, but cannot atomically close, the race with an
+            # unrelated writer between a content check and os.replace.
+            if before_replace is not None:
+                before_replace()
             os.replace(tmp, path)
         except OSError as exc:
             # `held_open`: this is a file in the save folder, so a
@@ -1020,7 +1025,8 @@ def check_metadata_updatable(meta_path, report):
     return meta
 
 
-def update_metadata(meta_path, size_decompressed, size_disk, report):
+def update_metadata(meta_path, size_decompressed, size_disk, report,
+                    before_replace=None):
     """Step 10. Two uint32 and nothing else, checked on the file afterwards.
 
     The check used to be an assertion over the bytes this function was about to
@@ -1034,6 +1040,8 @@ def update_metadata(meta_path, size_decompressed, size_disk, report):
     byte it was, and the length has to be the length it was. That is a check
     and it is cheap -- the file is 432 bytes and it has just been read anyway.
     """
+    if before_replace is not None:
+        before_replace()
     slot = meta_slot(meta_path)
     raw_before = open(meta_path, "rb").read()
     plain_before = meta_decode(raw_before, slot)
@@ -1050,7 +1058,8 @@ def update_metadata(meta_path, size_decompressed, size_disk, report):
     # two steps labelled `write` and opened the sentence `write: ...` for a
     # failure in the `mf_`, at the one moment the two files on disk disagree
     # and the difference between them is the whole message (review 5, note 6).
-    write_atomic(meta_path, blob, "patch the mf_", after_write=True)
+    write_atomic(meta_path, blob, "patch the mf_", after_write=True,
+                 before_replace=before_replace)
     check = meta_decode(open(meta_path, "rb").read(), slot)
     outside = [i for i in range(min(len(plain_before), len(check)))
                if not 0x38 <= i < 0x40 and plain_before[i] != check[i]]
@@ -1406,9 +1415,13 @@ def _newest_first(root):
     return sorted(names, key=key, reverse=True)
 
 
-def list_backups(root):
+def list_backups(root, verify=True):
     """-> [{folder, stamp, save, size, sha256_ok, has_manifest, outcome, ...}],
     newest first.
+
+    `verify=False` enumerates metadata only, for counts and last-apply lookup.
+    Integrity and current-match fields then remain unknown, never verified.
+    The Backups view and Restore retain full verification.
 
     `sha256_ok` is None when there is nothing to check against, False when a
     file no longer hashes to what the manifest says, True when both halves of
@@ -1458,7 +1471,7 @@ def list_backups(root):
         path = os.path.join(folder, fn) if fn else None
         size = os.path.getsize(path) if path and os.path.exists(path) else None
         files, problems, states = {}, [], []
-        if man:
+        if man and verify:
             for label, row in (("save", save), ("meta", meta)):
                 if not row:
                     continue
@@ -1476,7 +1489,7 @@ def list_backups(root):
             ok = True
         else:
             ok = None
-        current = _current_matches(man, cache) if man else None
+        current = _current_matches(man, cache) if man and verify else None
         out.append({"folder": folder, "stamp": m.group(1) if m else None,
                     "save": fn, "size": size, "sha256_ok": ok,
                     "has_manifest": man is not None,
@@ -2234,7 +2247,7 @@ def _apply_locked(save_path, cfg, expected_fingerprint, plan_builder, backup_roo
         # sites can only fire after step 9, and all six used to record the
         # opposite of what happened, with the plan row reset to null and the
         # folder left eligible for pruning (Q1).
-        if progress.wrote_save:
+        if progress.wrote_save and not getattr(exc, "concurrent_change", False):
             r.info("write", progress.after_write_sentence(folder))
         write_manifest(folder, save_path, copied, progress.plan, cfg,
                        outcome=progress.refused_outcome(), refusal=str(exc),
@@ -2242,6 +2255,14 @@ def _apply_locked(save_path, cfg, expected_fingerprint, plan_builder, backup_roo
                        game=game_note)
         if getattr(exc, "report", None) is None:
             exc.report = r
+        raise
+    except Exception as exc:
+        # An unexpected transform error is finished, not an interrupted run.
+        # Preserve the original exception for the server's error reference.
+        write_manifest(folder, save_path, copied, progress.plan, cfg,
+                       outcome=progress.refused_outcome(),
+                       refusal="unexpected %s during Apply; see the log" % type(exc).__name__,
+                       expected_fingerprint=expected_fingerprint, game=game_note)
         raise
 
 
@@ -2282,6 +2303,26 @@ class _Progress(object):
         return ("a check failed after the save was written; the save on disk "
                 "is the new one; restore this backup (%s) to put it back"
                 % folder)
+
+
+def _require_unchanged(path, expected_hash, report, after_write=False):
+    """Compare with the approved snapshot, including file creation/deletion."""
+    actual = (read_hash(path, "check for concurrent changes", after_write=after_write)
+              if os.path.exists(path) else None)
+    if actual == expected_hash:
+        return
+    try:
+        if after_write:
+            report.fail("concurrent change",
+                        "%s changed on disk during Apply after the save was written; "
+                        "no further files were replaced. Keep this backup and inspect "
+                        "the save and metadata before restoring." % os.path.basename(path))
+        report.fail("concurrent change",
+                    "%s changed on disk during Apply; nothing was written by this run. "
+                    "Close other save writers and re-run the preview." % os.path.basename(path))
+    except Refused as exc:
+        exc.concurrent_change = True
+        raise
 
 
 def _apply_after_backup(save_path, cfg, expected_fingerprint, plan_builder,
@@ -2392,14 +2433,24 @@ def _apply_after_backup(save_path, cfg, expected_fingerprint, plan_builder,
     # spell: `mf_SAVE9.HG` beside a `save9.hg` was found, backed up under the
     # invented name and renamed by the write (Q9).
     meta_path = meta_path_for(save_path)
-    check_metadata_updatable(meta_path, r)
+    originals = {os.path.normcase(row["file"]): row["sha256"] for row in copied}
+    save_hash = originals[os.path.normcase(os.path.basename(save_path))]
+    meta_hash = originals.get(os.path.normcase(os.path.basename(meta_path)))
+    # Inspect the metadata we actually backed up; a changed live copy must
+    # never become an unapproved input to the metadata patch.
+    check_metadata_updatable(os.path.join(folder, os.path.basename(meta_path)), r)
+
+    def unchanged_pair(after_write=False):
+        _require_unchanged(save_path, save_hash, r, after_write=after_write)
+        _require_unchanged(meta_path, meta_hash, r, after_write=after_write)
 
     # ---- 9
-    write_atomic(save_path, framed)
+    write_atomic(save_path, framed, before_replace=unchanged_pair)
     # Before the report line and before the manifest: from this instruction on,
     # the operator's save is the new one, and every refusal from here has to
     # say so (Q1).
     progress.wrote_save = True
+    save_hash = hashlib.sha256(framed).hexdigest()
     r.ok("write", "%s, %d bytes, written to a temp file in the same directory and "
                   "renamed over the target" % (save_path, len(framed)))
 
@@ -2413,8 +2464,10 @@ def _apply_after_backup(save_path, cfg, expected_fingerprint, plan_builder,
                    expected_fingerprint=expected_fingerprint, game=game)
 
     # ---- 10
+    unchanged_pair(after_write=True)
     if os.path.exists(meta_path):
-        update_metadata(meta_path, len(new_payload), len(framed), r)
+        update_metadata(meta_path, len(new_payload), len(framed), r,
+                        before_replace=lambda: unchanged_pair(after_write=True))
     else:
         r.info("metadata", "no mf_ file beside this save; nothing to update")
     # Either the mf_ now agrees with the save or there was none to disagree.

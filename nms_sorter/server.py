@@ -709,7 +709,7 @@ def last_apply(app, save):
         return None
     want = os.path.normcase(os.path.basename(save.path))
     folder = os.path.normcase(os.path.dirname(os.path.abspath(save.path)))
-    for row in (app.list_backups() or []):
+    for row in (app.list_backups(verify=False) or []):
         try:
             man = safety.read_manifest(row.get("folder")) or {}
         except Exception:
@@ -1607,7 +1607,7 @@ class Handler(BaseHTTPRequestHandler):
             counts = itemdbmod.data_counts()
         except Exception:
             counts = None
-        backups = app.list_backups()
+        backups = app.list_backups(verify=False)
         cfg = getattr(app, "config", None) or {}
         # The selected save's own platform word. Read through the loaded save
         # rather than by opening a file, and None whenever there is no save to

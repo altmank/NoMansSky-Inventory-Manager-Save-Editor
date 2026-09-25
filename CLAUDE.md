@@ -64,7 +64,9 @@ lock beside the save; game state checked: closed, or running with the main-menu 
 save gates; back up the save and its `mf_` and verify both; decode the backup copy; prove the
 identity round trip on this file; transform; encode,
 decode again, compare; prove nothing outside the named containers changed; check the `mf_`
-format; temp file, fsync, atomic replace; patch the `mf_` sizes; re-read both files; settle the
+format; temp file, fsync, recheck both live files against the backup, atomic replace;
+patch the `mf_` sizes with another live-pair check immediately before replacement;
+re-read both files; settle the
 manifest. The plan is re-planned from the exact bytes about to be written and its fingerprint
 must match what was approved. `restore()` is the same shape in reverse and refuses when the game
 has written since the apply. A change to `safety.py`, `codec.py`, `savemodel.py` or `planner.py`

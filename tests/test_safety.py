@@ -1020,8 +1020,8 @@ def test_a_written_file_that_decodes_to_something_else_is_refused(
     real_backup = safety.backup
     backup_copy = []
 
-    def spy(meta_path, a, b, report):
-        out = real(meta_path, a, b, report)
+    def spy(meta_path, a, b, report, **kw):
+        out = real(meta_path, a, b, report, **kw)
         shutil.copy2(backup_copy[0], write_lab["target"])
         return out
 
@@ -1058,8 +1058,8 @@ def test_a_metadata_size_disk_that_does_not_match_is_refused(write_lab,
     written when it fires -- which is why the sentence exists at all."""
     real = safety.update_metadata
 
-    def off_by_one(meta_path, size_decompressed, size_disk, report):
-        return real(meta_path, size_decompressed, size_disk + 1, report)
+    def off_by_one(meta_path, size_decompressed, size_disk, report, **kw):
+        return real(meta_path, size_decompressed, size_disk + 1, report, **kw)
 
     monkeypatch.setattr(safety, "update_metadata", off_by_one)
     with pytest.raises(safety.Refused) as exc:
@@ -1073,8 +1073,8 @@ def test_a_metadata_size_decompressed_that_does_not_match_is_refused(
     match the payload's ..."**."""
     real = safety.update_metadata
 
-    def off_by_one(meta_path, size_decompressed, size_disk, report):
-        return real(meta_path, size_decompressed + 1, size_disk, report)
+    def off_by_one(meta_path, size_decompressed, size_disk, report, **kw):
+        return real(meta_path, size_decompressed + 1, size_disk, report, **kw)
 
     monkeypatch.setattr(safety, "update_metadata", off_by_one)
     with pytest.raises(safety.Refused) as exc:

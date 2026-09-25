@@ -154,6 +154,7 @@ jobs:
         run: echo "tests/test_docs.py does not exist yet (P5-9); nothing to run."
 
   release:
+    needs: [tests, docs]
     # P7-1. A `v*` tag, and nothing else: not a branch push, not a pull
     # request, not the nightly. Windows only -- the executable is built on the
     # platform it runs on, there is no cross-compilation, and `build_exe.py`

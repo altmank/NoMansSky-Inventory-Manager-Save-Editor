@@ -980,12 +980,30 @@
   "procedural":false,
   "subtitle":"Bespoke Personal Identification"
  },
+ "BANNER_MAINFAM":{
+  "bucket":"cosmetics_appearance",
+  "category":"CUSTOMISATIONPART",
+  "kind":"product",
+  "multiplier":1,
+  "name":"BANNER_MAINFAM",
+  "procedural":false,
+  "subtitle":"Bespoke Personal Identification"
+ },
  "BANNER_NADA":{
   "bucket":"cosmetics_appearance",
   "category":"CUSTOMISATIONPART",
   "kind":"product",
   "multiplier":1,
   "name":"Priest Entity Nada Banner",
+  "procedural":false,
+  "subtitle":"Bespoke Personal Identification"
+ },
+ "BANNER_NMSA":{
+  "bucket":"cosmetics_appearance",
+  "category":"CUSTOMISATIONPART",
+  "kind":"product",
+  "multiplier":1,
+  "name":"BANNER_NMSA",
   "procedural":false,
   "subtitle":"Bespoke Personal Identification"
  },

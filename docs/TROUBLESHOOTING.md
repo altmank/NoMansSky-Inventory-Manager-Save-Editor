@@ -1,5 +1,24 @@
 # Troubleshooting
 
+### ... changed on disk during Apply; nothing was written by this run. Close other save writers and re-run the preview.
+
+The save or its metadata changed after the backup was captured. Apply checked
+the pair again after preparing its temporary file and stopped before replacing
+either file. The other writer's changes remain on disk. Close other editors or
+wait for synchronization to finish, refresh the save, and preview again.
+
+### ... changed on disk during Apply after the save was written; no further files were replaced. Keep this backup and inspect the save and metadata before restoring.
+
+Another writer changed a file after Apply had already replaced the save. Apply
+stopped before replacing another file and marked the backup as refused after a
+write. Preserve both the current files and the backup before deciding what to
+restore; the current files may contain changes made by the other writer.
+
+These checks compare the actual file contents, including the appearance or
+disappearance of metadata. They run immediately before each replacement, but
+cannot make a separate hash check and filesystem replacement one atomic
+operation. Keep other save writers closed during Apply.
+
 Audience: anyone who got a message they did not expect.
 
 Find the message you saw. The headings are the exact first sentence of every
