@@ -722,15 +722,15 @@ def test_two_sorter_processes_cannot_both_write_one_save(tmp_path,
     status, body = post(port, "/api/apply",
                         {"file": str(save), "fingerprint": plan["fingerprint"],
                          "at_main_menu": True})
-    if os.name == "nt":
+    if os.name == "nt" or sys.platform.startswith("linux"):
         assert status == 200, body
         assert save.read_bytes() != before, "the lock released, the apply ran"
         assert body["result"]["rows"], body["result"]
     else:
-        # Apply is Windows-only: off Windows there is no process list to read
-        # and a check with no answer is a refusal. The lock is what this test
-        # is about, and the sentence proves the request got past it.
-        refused(status, body, "the process check needs Windows")
+        # macOS has no process check, and a check with no answer is a
+        # refusal. The lock is what this test is about, and the sentence
+        # proves the request got past it.
+        refused(status, body, "the process check needs Windows or Linux")
         assert save.read_bytes() == before
 
 

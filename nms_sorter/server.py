@@ -292,19 +292,6 @@ def save_warnings(save, strict=False):
     return list(rows)
 
 
-#: the one root this program probes, re-exported from `platform.py`. There is
-#: no second strategy: GOG and Microsoft Store layouts were never observed
-#: here, and "picking silently is how the wrong account gets sorted"
-#: (GOAL.md Rule 1, §2.3).
-SAVE_ROOT_PARTS = platformmod.SAVE_ROOT_PARTS
-
-
-def save_root():
-    """-> the %APPDATA% HelloGames/NMS root, or None off Windows, where no
-    such path exists and a guess would sort the wrong account (P4-1)."""
-    return platformmod.default_save_root()
-
-
 def _playtime_words(secs):
     """`86400` -> `"24h played"`. The page's own spelling, in Python.
 
@@ -354,57 +341,70 @@ def folder_summary(path):
 
 
 def detect_saves():
-    """-> ({folders, root, root_exists}) for the first-run page.
+    """-> ({folders, root, roots, root_exists}) for the first-run page.
 
-    Reads directory listings under %APPDATA%/HelloGames/NMS, plus the `mf_`
+    Probes every root `platform.save_roots()` names: `%APPDATA%/HelloGames/NMS`
+    on Windows, each Steam library's Proton prefix on Linux, and the native
+    folder on macOS. In every root it reads directory listings, plus the `mf_`
     metadata of the newest save in each candidate (W10, `folder_summary`): no
     save file is opened, no save is decoded, and no other folder on the machine
     is looked at. A folder qualifies if it is named `st_*` or `DefaultUser`, or
     if it is the root itself and holds `save*.hg` (which is what a hand-copied
     folder looks like).
+
+    `root` is the first root, kept as a string for the settings panel. `roots`
+    is every one of them, because a Linux machine can have several Steam
+    libraries and the page says where it looked.
     """
-    root = save_root()
-    out = {"root": root, "root_exists": bool(root) and os.path.isdir(root),
-           "folders": []}
-    if not out["root_exists"]:
-        if root is None:
-            # Not an empty %APPDATA%: there is no such path here at all, and
-            # the page says so rather than implying the folder is missing.
-            out["error"] = platformmod.SAVE_ROOT_UNSUPPORTED
+    roots = list(platformmod.save_roots())
+    out = {"root": roots[0] if roots else None, "roots": roots,
+           "root_exists": any(os.path.isdir(r) for r in roots), "folders": []}
+    if not roots:
+        # Not an empty %APPDATA%: there is no such path here at all, and the
+        # page says so rather than implying the folder is missing.
+        out["error"] = platformmod.SAVE_ROOT_NOT_FOUND
         return out
-    try:
-        names = sorted(os.listdir(root))
-    except OSError as exc:
-        out["error"] = "%s" % exc
-        return out
-    cands = [os.path.join(root, n) for n in names
-             if (n.lower().startswith("st_") or n.lower() == "defaultuser")
-             and os.path.isdir(os.path.join(root, n))]
-    if settingsmod.save_count(root):
-        cands.append(root)
-    for path in cands:
-        newest, count = None, 0
-        try:
-            for fn in os.listdir(path):
-                low = fn.lower()
-                if low.startswith("save") and low.endswith(".hg"):
-                    count += 1
-                    m = os.stat(os.path.join(path, fn)).st_mtime
-                    newest = m if newest is None else max(newest, m)
-        except OSError:
+    seen = set()
+    for root in roots:
+        if not os.path.isdir(root):
             continue
-        summary, played = folder_summary(path) if count else (None, None)
-        out["folders"].append({
-            "path": path,
-            "save_count": count,
-            "newest_save_mtime": int(newest) if newest else None,
-            # Local time, like every other timestamp a player is shown (W17).
-            "newest_save_label": (
-                time.strftime("%Y-%m-%d %H:%M", time.localtime(newest))
-                if newest else None),
-            "newest_save_summary": summary,
-            "newest_save_playtime": played,
-        })
+        try:
+            names = sorted(os.listdir(root))
+        except OSError as exc:
+            if "error" not in out:
+                out["error"] = "%s" % exc
+            continue
+        cands = [os.path.join(root, n) for n in names
+                 if (n.lower().startswith("st_") or n.lower() == "defaultuser")
+                 and os.path.isdir(os.path.join(root, n))]
+        if settingsmod.save_count(root):
+            cands.append(root)
+        for path in cands:
+            if path in seen:
+                continue
+            seen.add(path)
+            newest, count = None, 0
+            try:
+                for fn in os.listdir(path):
+                    low = fn.lower()
+                    if low.startswith("save") and low.endswith(".hg"):
+                        count += 1
+                        m = os.stat(os.path.join(path, fn)).st_mtime
+                        newest = m if newest is None else max(newest, m)
+            except OSError:
+                continue
+            summary, played = folder_summary(path) if count else (None, None)
+            out["folders"].append({
+                "path": path,
+                "save_count": count,
+                "newest_save_mtime": int(newest) if newest else None,
+                # Local time, like every other timestamp a player is shown (W17).
+                "newest_save_label": (
+                    time.strftime("%Y-%m-%d %H:%M", time.localtime(newest))
+                    if newest else None),
+                "newest_save_summary": summary,
+                "newest_save_playtime": played,
+            })
     out["folders"].sort(key=lambda f: f["newest_save_mtime"] or 0, reverse=True)
     return out
 
@@ -1487,6 +1487,8 @@ class Handler(BaseHTTPRequestHandler):
             invalid = (pages.INVALID_NO_SAVES if os.path.isdir(current)
                        else pages.INVALID_NO_FOLDER)
         return pages.first_run(det["folders"], root=det["root"],
+                               roots=det["roots"],
+                               hints=platformmod.save_path_hints(),
                                current=current, invalid=invalid)
 
     # ------------------------------------------------------------- handlers

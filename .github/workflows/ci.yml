@@ -1,9 +1,10 @@
 # The push run, the nightly fuzz run and the docs run.
 #
-# Windows is the platform the tool writes saves on; Ubuntu is here to prove the
-# codec, the planner, the config and the server are platform-neutral and that
-# apply *refuses* off Windows rather than guessing (docs/SAFETY.md, "Platform
-# policy"). Python 3.9 is the declared floor and 3.13 is the current release;
+# Windows and Linux are the platforms the tool writes saves on; Ubuntu is
+# here to prove the codec, the planner, the config and the server are
+# platform-neutral and that the Linux process check reads /proc (macOS is the
+# one platform that still refuses to apply). Python 3.9 is the declared floor
+# and 3.13 is the current release;
 # the pair is what guards the codec's dependency on CPython's private
 # `json.encoder._make_iterencode`, which is the one place a CPython change
 # could silently break byte-exact floats.
@@ -71,16 +72,15 @@ jobs:
       - name: Tests
         run: python -m pytest tests -q --ignore=tests/test_fuzz.py
 
-      # The platform policy, proved rather than documented. `game_status()`
-      # cannot answer on Linux -- the Proton process is invisible to a native
-      # check -- and a check that cannot run counts as a refusal, so `known`
-      # is false. P4-1 changes the `method` string from "failed" to
-      # "unsupported: linux"; `known` is false either way, which is why that
-      # is the field asserted here.
-      - name: Platform policy (apply refuses off Windows)
+      # The platform policy, proved rather than documented. On Linux the
+      # game shows up as NMS.exe in /proc, so `game_status()` answers
+      # `known: True` (and `running: False` on this runner, where the game is
+      # not installed). macOS is the one platform that still reports
+      # `known: False`. `method` is "proc" on a readable /proc.
+      - name: Platform policy (Linux process check reads /proc)
         if: runner.os == 'Linux'
         run: |
-          python -c "import nms_sorter.safety as s; st=s.game_status(); print(st); assert st['known'] is False"
+          python -c "import nms_sorter.safety as s; st=s.game_status(); print(st); assert st['known'] is True and st['method'] == 'proc'"
 
   fuzz:
     # Nightly, and on demand. Not on push: 10,000 examples per property is

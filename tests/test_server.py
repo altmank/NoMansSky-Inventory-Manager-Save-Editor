@@ -14,6 +14,7 @@ Deliberately no `conftest.py` dependency: the fixture is here so the file can
 be run on its own, and because lane F owns that file.
 """
 import contextlib
+import html as htmlmod
 import http.client
 import json
 import logging
@@ -87,14 +88,14 @@ GAME_CLOSED = {"running": False, "pids": [], "method": "test", "known": True,
 GAME_RUNNING = {"running": True, "pids": [4242], "method": "test",
                 "known": True, "process": "NMS.exe"}
 
-#: no answer at all: off Windows, or a process list something is blocking.
+#: no answer at all: macOS, or a process list something is blocking.
 GAME_UNKNOWN = {"running": None, "pids": [], "method": "failed",
                 "known": False, "process": "NMS.exe",
                 "error": "no windll / no tasklist"}
 
 
 @pytest.fixture
-def srv(tmp_path):
+def srv(tmp_path, monkeypatch):
     folder = tmp_path / "saves"
     folder.mkdir()
     save = folder / "save.hg"
@@ -109,10 +110,15 @@ def srv(tmp_path):
     app.config = cfgmod.store(str(cfg_path), legacy.synthetic_config())
     app.sync_taxonomy()
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(safety, "game_status", lambda *a, **kw: dict(GAME_CLOSED))
-        with running(app, folder=folder, save=save, tmp=tmp_path) as s:
-            yield s
+    # Use the test's own `monkeypatch`, not a nested `MonkeyPatch.context()`.
+    # A test that calls `_game(...)` patches `safety.game_status` with the
+    # same fixture; a nested context would be undone before `monkeypatch`,
+    # and `monkeypatch` would then restore this fixture's stub instead of the
+    # real function, leaking it into every later test in the run.
+    monkeypatch.setattr(safety, "game_status",
+                        lambda *a, **kw: dict(GAME_CLOSED))
+    with running(app, folder=folder, save=save, tmp=tmp_path) as s:
+        yield s
 
 
 # ------------------------------------------------------------------ client
@@ -715,21 +721,27 @@ def test_a_backup_root_that_cannot_be_listed_does_not_break_the_route(
 # P2-3: detect-saves and the first-run page
 # ==========================================================================
 
+@pytest.fixture(autouse=True)
+def _no_operator_save_roots(monkeypatch):
+    """No test in this file probes the operator's own save folders.
+
+    `detect_saves()` asks `platform.save_roots()`, which on Linux walks the
+    real `$HOME` for Steam libraries. Patching it here keeps the suite away
+    from a live folder; a test that needs a root points it at its temp tree.
+    """
+    monkeypatch.setattr(platformmod, "save_roots", lambda: [])
+
+
 @pytest.fixture
 def appdata(tmp_path, monkeypatch):
     """`%APPDATA%\\HelloGames\\NMS` as a temp tree with two profiles.
 
     The real folder is never read by this test. `detect-saves` probes exactly
-    this one root and nothing else (Rule 1).
+    the root patched in here and nothing else (Rule 1).
 
-    Windows only, and not because of the path separators: off Windows
-    `platform.default_save_root()` is None by design, because
-    `%APPDATA%\\HelloGames\\NMS` is not a path that exists there and a guess
-    would sort the wrong account (GOAL.md §2.3, P4-1). The off-Windows
-    behaviour has its own tests below.
+    Platform-neutral: `save_roots()` is patched to the temp root, so the same
+    fixture proves the listing and the candidates on Windows and on Linux.
     """
-    if not platformmod.is_windows():
-        pytest.skip("there is no %APPDATA% save root off Windows (P4-1)")
     root = tmp_path / "appdata" / "HelloGames" / "NMS"
     (root / "st_111").mkdir(parents=True)
     (root / "st_222").mkdir(parents=True)
@@ -742,7 +754,7 @@ def appdata(tmp_path, monkeypatch):
     os.utime(str(root / "st_111" / "save.hg"), (1_700_000_000, 1_700_000_000))
     os.utime(str(root / "st_222" / "save2.hg"), (1_800_000_000, 1_800_000_000))
     os.utime(str(root / "st_222" / "save4.hg"), (1_750_000_000, 1_750_000_000))
-    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setattr(platformmod, "save_roots", lambda: [str(root)])
     return root
 
 
@@ -764,31 +776,50 @@ def test_detect_saves_probes_one_root_and_reports_what_it_found(srv, appdata):
     assert by_path[str(appdata / "DefaultUser")]["newest_save_mtime"] is None
 
 
-def test_detect_saves_with_no_root_at_all(srv, tmp_path, monkeypatch):
-    monkeypatch.setenv("APPDATA", str(tmp_path / "nowhere"))
+def test_detect_saves_with_a_root_that_is_not_there(srv, tmp_path,
+                                                    monkeypatch):
+    missing = str(tmp_path / "nowhere")
+    monkeypatch.setattr(platformmod, "save_roots", lambda: [missing])
     status, b = jget(srv, "/api/detect-saves")
     assert status == 200
-    assert b["folders"] == [] and b["root_exists"] is False
+    assert b["root"] == missing
+    assert b["root_exists"] is False
+    assert b["folders"] == []
 
 
-@pytest.mark.skipif(platformmod.is_windows(),
-                    reason="this is the off-Windows answer")
-def test_detect_saves_off_windows_says_there_is_nowhere_to_look(srv):
+def test_detect_saves_with_no_root_says_where_to_point_it(srv):
     """No root, no folders, and a sentence that points at the two ways to say
     where the saves are. Not an empty `%APPDATA%`, which would read as "your
     save folder is missing" on a machine that never had one."""
     status, b = jget(srv, "/api/detect-saves")
     assert status == 200
     assert b["root"] is None
+    assert b["roots"] == []
     assert b["root_exists"] is False
     assert b["folders"] == []
     assert "--folder" in b["error"]
     assert "Settings section" in b["error"]
 
 
-@pytest.mark.skipif(platformmod.is_windows(),
-                    reason="this is the off-Windows answer")
-def test_the_first_run_page_off_windows_still_offers_the_type_in_field(
+def test_detect_saves_lists_candidates_from_every_root(srv, tmp_path,
+                                                       monkeypatch):
+    """A Linux machine with two Steam libraries has two roots, and the page
+    has to see both rather than whichever one sorted first."""
+    first = tmp_path / "one" / "HelloGames" / "NMS"
+    second = tmp_path / "two" / "HelloGames" / "NMS"
+    for root, name in ((first, "st_1"), (second, "st_2")):
+        (root / name).mkdir(parents=True)
+        (root / name / "save.hg").write_bytes(b"x")
+    monkeypatch.setattr(platformmod, "save_roots",
+                        lambda: [str(first), str(second)])
+    _status, b = jget(srv, "/api/detect-saves")
+    assert b["roots"] == [str(first), str(second)]
+    paths = [f["path"] for f in b["folders"]]
+    assert str(first / "st_1") in paths
+    assert str(second / "st_2") in paths
+
+
+def test_the_first_run_page_with_no_root_still_offers_the_type_in_field(
         first_run_srv):
     """Browsing works everywhere, so the folder picker has to render with no
     candidates at all rather than 500 on a root that is None (P4-1)."""
@@ -817,9 +848,8 @@ def test_the_first_run_page_is_served_when_no_folder_is_chosen(first_run_srv,
     """"Save folder not found": no save
     folder is not an error page, it is the first-run page -- the candidates
     this build will talk about, rendered server-side, with a text field for a
-    save folder it did not find. No auto-detect beyond
-    `%APPDATA%\\HelloGames\\NMS`, because a wrong guess sorts the wrong
-    account."""
+    save folder it did not find. No auto-detect beyond the root the test
+    patches in, because a wrong guess sorts the wrong account."""
     assert first_run_srv.app.first_run is True
     status, ctype, raw = get(first_run_srv, "/")
     assert status == 200 and ctype.startswith("text/html")
@@ -830,15 +860,18 @@ def test_the_first_run_page_is_served_when_no_folder_is_chosen(first_run_srv,
     assert 'action="/api/settings"' in page
 
 
-def test_the_first_run_page_lists_the_three_paths_when_nothing_is_found(
-        first_run_srv, tmp_path, monkeypatch):
-    monkeypatch.setenv("APPDATA", str(tmp_path / "nowhere"))
+def test_the_first_run_page_lists_the_platform_paths_when_nothing_is_found(
+        first_run_srv):
     status, _ctype, raw = get(first_run_srv, "/")
     page = raw.decode("utf-8")
     assert status == 200
     assert pages.NO_SAVES_H1.replace("'", "&#x27;") in page
-    assert "DefaultUser" in page and "st_" in page
-    assert "not supported" in page
+    hints = platformmod.save_path_hints()
+    assert hints
+    for label, path in hints:
+        assert htmlmod.escape(label, quote=True) in page
+        assert htmlmod.escape(path, quote=True) in page
+    assert 'name="save_folder"' in page
 
 
 def test_choosing_a_folder_turns_the_first_run_page_into_the_app(
@@ -1705,8 +1738,8 @@ def test_the_game_route_is_the_platform_answer(srv, monkeypatch):
 
     The real answer, not the fixture's: `srv` arranges a closed game so the
     write path has something to read, and this is the one test that has to see
-    what the machine says -- off Windows that answer carries an `error` the
-    stub has no reason to invent."""
+    what the machine says -- on macOS that answer carries an `error` the stub
+    has no reason to invent."""
     monkeypatch.setattr(safety, "game_status", platformmod.game_status)
     status, b = jget(srv, "/api/game")
     assert status == 200

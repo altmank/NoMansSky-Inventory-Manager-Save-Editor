@@ -11,11 +11,13 @@ operating system they are on -- stop being testable there (GOAL.md §9.1, the
 So this module holds five kinds of answer:
 
 * **the process check** (`game_status`), which is the gate the whole write
-  sequence hangs off, and which off Windows says "not known" without trying;
+  sequence hangs off: Toolhelp32/`tasklist` on Windows, `/proc` on Linux, and
+  "not known" on macOS;
 * **the refusal sentence** for a check that cannot run, because the reason
   differs between "the process list would not read" and "there is no process
   list to read here" (`refusal_sentence`);
-* **the machine's paths**: `default_save_root`, `state_dir`, `runtime_dir`;
+* **the machine's paths**: `save_roots`, `default_save_root`,
+  `save_path_hints`, `state_dir`, `runtime_dir`;
 * **`pid_alive`**, for the apply lock;
 * **the single-instance lock** (`acquire_single_instance`) and its other half
   `exclusive_server_class`, because "only one of me" is a kernel object on
@@ -28,15 +30,19 @@ So this module holds five kinds of answer:
   and `message_box`, which exist because a windowed PyInstaller build has no
   stdout and no console, so an unhandled exception in it is completely silent.
 
-## Why there is no Linux or macOS process check
+## The process check on Linux, and why macOS has none
 
-Not an omission. Under Proton the game runs inside a Wine prefix, and a native
-`ps` does not list `NMS.exe`: it lists the Proton wrapper. A check written
-there would answer "not running" while the game is running, and the one thing
-the write gate must never do is answer "closed" about a save the game has open.
-A wrong "not running" costs a play session. So off Windows the answer is
-`known: False` and apply refuses (DECISIONS.md, 2026-09-14, "Apply is
-Windows-only"). Plan, browse and the codec work everywhere.
+On Linux the game runs through Proton, but Wine gives the game process the
+name of the Windows executable, so `NMS.exe` appears in `/proc`.
+`_game_status_linux` reads `/proc/<pid>/comm` and falls back to the
+NUL-separated command line; it shells out to nothing. If `/proc` cannot be
+read, the answer is `known: False` and apply refuses, exactly as a failed
+Windows check does.
+
+macOS has no check. A native answer would be a guess about the process name
+and about whether the game holds the save, and a wrong "not running" costs a
+play session. So on macOS the answer is `known: False` and apply refuses.
+Plan, browse and the codec work everywhere.
 
 ## The two-second cache
 
@@ -53,6 +59,7 @@ against anyway.
 import ctypes
 import errno
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -69,35 +76,63 @@ GAME_PROCESS = "NMS.exe"
 #: how long a `game_status()` answer is reused. See the module docstring.
 STATUS_CACHE_SECONDS = 2.0
 
-#: `%APPDATA%\HelloGames\NMS`, the one root this program probes. There is no
-#: second strategy: GOG and Microsoft Store layouts were never observed here,
-#: and "picking silently is how the wrong account gets sorted" (GOAL.md §2.3).
+#: the two parts of the save folder the game itself writes everywhere: under
+#: `%APPDATA%` on Windows, inside the Proton prefix on Linux, and inside
+#: `~/Library/Application Support` on macOS. The platform-specific prefix is
+#: what `save_roots()` below supplies.
 SAVE_ROOT_PARTS = ("HelloGames", "NMS")
+
+#: the Steam application id for No Man's Sky. There is no native Linux build,
+#: so the game runs through Steam Play and its Windows files sit in a Proton
+#: prefix under this id.
+PROTON_APPID = "275850"
+
+#: the Steam roots an ordinary install creates, relative to `$HOME`. Flatpak
+#: and Snap each keep their own copy of Steam, and both Flatpak spellings have
+#: shipped. Duplicates are removed by `save_roots()`, so the `~/.steam/steam`
+#: symlink is harmless.
+STEAM_ROOT_PARTS = (
+    (".steam", "steam"),
+    (".steam", "root"),
+    (".steam", "debian-installation"),
+    (".local", "share", "Steam"),
+    (".var", "app", "com.valvesoftware.Steam", ".local", "share", "Steam"),
+    (".var", "app", "com.valvesoftware.Steam", "data", "Steam"),
+    ("snap", "steam", "common", ".local", "share", "Steam"),
+)
+
+#: a `libraryfolders.vdf` line that names a Steam library. The file is Valve's
+#: KeyValues text; only the path matters here, and a hand-written or future
+#: field must not make discovery fail.
+_STEAM_LIBRARY_PATH = re.compile(r'^\s*"path"\s+"(.*)"\s*$')
 
 #: read by `is_windows()` **only under pytest**, so the suite can prove the
 #: non-Windows answers on a Windows machine. Deliberately not honoured in a
 #: normal run: a environment variable that can turn the write gate into "not
 #: known" is a foot-gun, and "not known" is a refusal, so the worst a mistake
-#: here can do is refuse a write. Set it to `linux` or `darwin`.
+#: here can do is refuse a write. Set it to `linux`, `darwin` or `win32`.
 FAKE_PLATFORM_ENV = "NMS_SORTER_FAKE_PLATFORM"
 
-#: the sentence apply refuses with when there is no process list to read.
+#: the sentence apply refuses with on a platform with no process check.
 #: Written out as one literal rather than composed, because
-#: `docs/TROUBLESHOOTING.md` and `docs/SAFETY.md` quote it verbatim and
-#: `tests/test_docs.py` greps this source for the quoted form (GOAL.md P5-9).
+#: `docs/TROUBLESHOOTING.md` quotes it verbatim and `tests/test_docs.py` greps
+#: this source for the quoted form (GOAL.md P5-9).
 UNSUPPORTED_REFUSAL = (
-    "the process check needs Windows, so it cannot be told whether NMS.exe is "
-    "running; plan and browse work here, apply does not")
+    "the process check needs Windows or Linux, so it cannot be told whether "
+    "NMS.exe is running; plan and browse work here, apply does not")
 
-#: what `game_status()["error"]` says off Windows. The short form, because the
-#: long form is `UNSUPPORTED_REFUSAL` and the API returns both.
-UNSUPPORTED_ERROR = "the process check needs Windows"
+#: what `game_status()["error"]` says on a platform with no process check. The
+#: short form, because the long form is `UNSUPPORTED_REFUSAL` and the API
+#: returns both.
+UNSUPPORTED_ERROR = "the process check needs Windows or Linux"
 
-#: `detect_saves()` has no root to probe off Windows, and says so rather than
+#: `detect_saves()` has no root to probe when neither the Windows path nor a
+#: Linux Proton prefix nor the macOS folder is there, and says so rather than
 #: reporting an empty `%APPDATA%`.
-SAVE_ROOT_UNSUPPORTED = (
-    "the default save folder is a Windows path, so there is nothing to look "
-    "in here; pass --folder, or set the save folder on the Settings section")
+SAVE_ROOT_NOT_FOUND = (
+    "no No Man's Sky save folder was found in the places this build probes, "
+    "so there is nothing to look in here; start the game once, pass --folder, "
+    "or set the save folder on the Settings section")
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +156,14 @@ def is_windows():
     return platform_name().startswith("win")
 
 
+def is_linux():
+    return platform_name().startswith("linux")
+
+
+def is_macos():
+    return platform_name().startswith("darwin")
+
+
 # ---------------------------------------------------------------------------
 # 1. is the game running
 # ---------------------------------------------------------------------------
@@ -133,6 +176,11 @@ MAX_PATH = 260
 #: passing it to `subprocess` -- which raises `ValueError` on POSIX -- can only
 #: happen on a branch POSIX never reaches.
 CREATE_NO_WINDOW = 0x08000000
+
+#: the Linux process table. Read directly, never through `ps` or `pgrep`, so a
+#: missing or restricted `/proc` is an answer this check can name and a fake
+#: tree is a test fixture.
+PROC_ROOT = "/proc"
 
 
 class PROCESSENTRY32(ctypes.Structure):
@@ -192,10 +240,70 @@ def _game_status_windows():
                     "error": "%s / %s" % (exc, exc2)}
 
 
+def _proc_arg_matches(raw):
+    """True if one NUL-separated argv entry names `GAME_PROCESS`.
+
+    Wine launches the game with a Windows path, which may use backslashes, so
+    both separators are honoured. Matching the last component rather than a
+    substring keeps a text editor opened on `NMS.exe` or a shell history line
+    from counting as the game.
+    """
+    name = GAME_PROCESS.lower()
+    for arg in raw.split(b"\0"):
+        if not arg:
+            continue
+        text = arg.decode("utf-8", "replace").replace("\\", "/")
+        if text.rsplit("/", 1)[-1].lower() == name:
+            return True
+    return False
+
+
+def _read_proc_bytes(path):
+    """One small `/proc` file, or empty bytes if it cannot be read."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(4096)
+    except OSError:
+        return b""
+
+
+def _game_status_linux():
+    """-> the `/proc` answer. Never raises, and never shells out.
+
+    Wine names the game process after the Windows executable, so `comm` is
+    `NMS.exe`; the command line is the fallback for a Wine version or a copied
+    prefix that names it differently. A process whose files cannot be read is
+    skipped rather than failing the whole check, because the game runs as the
+    same user as the sorter. If `/proc` itself cannot be listed, the answer is
+    unknown and apply refuses rather than guessing.
+    """
+    name = GAME_PROCESS.lower()
+    try:
+        entries = os.listdir(PROC_ROOT)
+    except OSError as exc:
+        return {"running": None, "pids": [], "method": "failed",
+                "known": False, "process": GAME_PROCESS,
+                "error": "could not list %s: %s" % (PROC_ROOT, exc)}
+    pids = []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        base = os.path.join(PROC_ROOT, entry)
+        comm = _read_proc_bytes(os.path.join(base, "comm"))
+        comm = comm.decode("utf-8", "replace").strip().lower()
+        if comm == name:
+            pids.append(int(entry))
+            continue
+        if _proc_arg_matches(_read_proc_bytes(os.path.join(base, "cmdline"))):
+            pids.append(int(entry))
+    return {"running": bool(pids), "pids": sorted(pids), "method": "proc",
+            "known": True, "process": GAME_PROCESS}
+
+
 def _game_status_unsupported():
-    """The off-Windows answer. Nothing is attempted: no `ps`, no `pgrep`, no
-    `/proc` walk. See the module docstring for why a guess is worse than a
-    refusal here."""
+    """The macOS answer. Nothing is attempted: a native process name and a
+    native save-holding rule have not been measured, and a wrong "closed" is
+    the one answer this gate must never give."""
     return {"running": None, "known": False,
             "method": "unsupported: %s" % platform_name(),
             "pids": [], "process": GAME_PROCESS,
@@ -233,7 +341,12 @@ def game_status(max_age=None):
         cached = _status_cache
         if cached is not None and max_age > 0 and (now - cached[0]) < max_age:
             return _copy_status(cached[1])
-    st = _game_status_windows() if is_windows() else _game_status_unsupported()
+    if is_windows():
+        st = _game_status_windows()
+    elif is_linux():
+        st = _game_status_linux()
+    else:
+        st = _game_status_unsupported()
     with _status_lock:
         _status_cache = (time.monotonic(), _copy_status(st))
     return _copy_status(st)
@@ -250,10 +363,10 @@ def refusal_sentence(status):
     """The sentence apply refuses with when `status["known"]` is false.
 
     Two reasons, two sentences. "The process list would not read" is a Windows
-    machine with something in the way, and names the error so the operator can
-    act on it. "There is no process list here" is a platform fact and no error
-    string would help. Both end in a refusal; only the wording differs, and
-    the wording is the whole value of a refusal (GOAL.md §1.9).
+    or Linux machine with something in the way, and names the error so the
+    operator can act on it. "There is no process check here" is a macOS fact
+    and no error string would help. Both end in a refusal; only the wording
+    differs, and the wording is the whole value of a refusal (GOAL.md §1.9).
 
     Both say what to do, and neither says "quit the game". A running game is
     not what apply refuses any more -- a running game in a loaded save is --
@@ -273,16 +386,149 @@ def refusal_sentence(status):
 # the machine's paths
 # ---------------------------------------------------------------------------
 
-def default_save_root():
-    """-> `%APPDATA%\\HelloGames\\NMS`, or None where that path means nothing.
+def _unique_paths(paths):
+    """Drop entries that name the same directory, keeping the first spelling.
 
-    None rather than a POSIX-ish guess: `~/.steam/.../compatdata/275850/pfx/`
-    has never been observed here, and a wrong guess sorts the wrong account.
-    The caller offers the folder picker instead (GOAL.md §2.3).
+    `~/.steam/steam` is a symlink to `~/.local/share/Steam` on a normal
+    install, and an extra library may be listed more than once by an older
+    Steam, so the same profile must not appear twice on the first-run page.
     """
-    if not is_windows():
-        return None
-    return os.path.join(os.environ.get("APPDATA", ""), *SAVE_ROOT_PARTS)
+    out, seen = [], set()
+    for path in paths:
+        try:
+            key = os.path.normcase(os.path.realpath(path))
+        except OSError:
+            key = os.path.normcase(os.path.abspath(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(path)
+    return out
+
+
+def _extra_steam_libraries(steam_root):
+    """The library paths named by `steamapps/libraryfolders.vdf`, if readable.
+
+    A second drive and a Steam Deck microSD card both put the game, and so its
+    Proton prefix, outside the Steam root in `$HOME`. The file is Valve's
+    KeyValues text; a line that does not carry a path is skipped rather than
+    treated as a reason to stop looking.
+    """
+    path = os.path.join(steam_root, "steamapps", "libraryfolders.vdf")
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return []
+    out = []
+    for line in text.splitlines():
+        match = _STEAM_LIBRARY_PATH.match(line)
+        if match:
+            out.append(match.group(1).replace("\\\\", "\\"))
+    return out
+
+
+def _steam_libraries():
+    """-> every Steam library directory on this machine, in probe order."""
+    home = os.path.expanduser("~")
+    found = []
+    for parts in STEAM_ROOT_PARTS:
+        root = os.path.join(home, *parts)
+        if not os.path.isdir(root):
+            continue
+        found.append(root)
+        found.extend(_extra_steam_libraries(root))
+    return _unique_paths(p for p in found if os.path.isdir(p))
+
+
+def _proton_save_roots(library):
+    """-> the HelloGames/NMS folders inside this library's NMS prefix.
+
+    Proton names its Windows user `steamuser`, and it always will for a prefix
+    Steam created. The `users` listing is read instead of that name because a
+    copied or repaired prefix can carry a different one, and a folder that is
+    present is evidence while a guessed name is not.
+    """
+    users = os.path.join(library, "steamapps", "compatdata", PROTON_APPID,
+                         "pfx", "drive_c", "users")
+    try:
+        names = sorted(os.listdir(users))
+    except OSError:
+        return []
+    out = []
+    for name in names:
+        root = os.path.join(users, name, "AppData", "Roaming",
+                            *SAVE_ROOT_PARTS)
+        if os.path.isdir(root):
+            out.append(root)
+    return out
+
+
+def save_roots():
+    """-> every save folder this build probes, in the order it probes them.
+
+    One root on Windows, the same one the program has always read. On Linux,
+    where the game only exists through Steam Play, the root inside every Proton
+    prefix found in every Steam library: native Steam, Flatpak, Snap, and each
+    additional library named by `libraryfolders.vdf`. On macOS the single
+    native folder. An empty list means there is nothing here to probe, and
+    `detect_saves()` says exactly that rather than reporting an empty
+    `%APPDATA%`.
+
+    Several roots are listed, never picked between: the first-run page asks
+    which account to sort, because "picking silently is how the wrong account
+    gets sorted" (GOAL.md §2.3).
+    """
+    if is_windows():
+        return [os.path.join(os.environ.get("APPDATA", ""), *SAVE_ROOT_PARTS)]
+    if is_linux():
+        found = []
+        for library in _steam_libraries():
+            found.extend(_proton_save_roots(library))
+        return _unique_paths(found)
+    if is_macos():
+        return [os.path.join(os.path.expanduser("~"), "Library",
+                             "Application Support", *SAVE_ROOT_PARTS)]
+    return []
+
+
+def default_save_root():
+    """-> the first save folder `save_roots()` found, or None.
+
+    `detect_saves()` uses every root; this is the one-path form for callers
+    that only need to name the usual place.
+    """
+    roots = save_roots()
+    return roots[0] if roots else None
+
+
+def save_path_hints():
+    """-> [(label, path)] for the first-run page, for this platform's layouts.
+
+    The paths are the ones the game itself writes, not a search of the
+    machine. A wrong guess sorts the wrong account, so a layout this build has
+    not been taught is left to the text field (GOAL.md §2.3).
+    """
+    if is_windows():
+        return [
+            ("Steam", "%APPDATA%\\HelloGames\\NMS\\st_<your steam id>"),
+            ("GOG", "%APPDATA%\\HelloGames\\NMS\\DefaultUser"),
+            ("Microsoft Store / Game Pass",
+             "not supported; the save is in a container format this tool has "
+             "never seen. See docs/TROUBLESHOOTING.md."),
+        ]
+    if is_linux():
+        tail = ("steamapps/compatdata/%s/pfx/drive_c/users/steamuser/"
+                "AppData/Roaming/HelloGames/NMS" % PROTON_APPID)
+        return [
+            ("Steam (Proton)", "~/.local/share/Steam/" + tail),
+            ("Flatpak Steam",
+             "~/.var/app/com.valvesoftware.Steam/data/Steam/" + tail),
+        ]
+    if is_macos():
+        return [("Native",
+                 "~/Library/Application Support/HelloGames/NMS")]
+    return []
 
 
 def state_dir():

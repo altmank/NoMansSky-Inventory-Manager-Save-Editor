@@ -1,15 +1,10 @@
 """P4-1: the one module allowed to branch on the operating system.
 
-Two halves. The first proves the **non-Windows** answers on whatever machine
-this runs on, by faking the platform: the shape of `game_status()`, the exact
-refusal sentence, and -- the assertion that matters most -- that *nothing is
-attempted*. A `ps`, a `pgrep`, a `/proc` walk or a `tasklist` that happens to
-exist would all produce a confident "not running" for a game running under
-Proton, which is the one wrong answer this gate must never give
-(DECISIONS.md, 2026-09-14, "Apply is Windows-only").
-
-The second half runs only on Windows and proves the real check answers with a
-method it actually used and `known is True`.
+Three platforms, three answers. Linux is faked with a `/proc` tree the test
+builds, so the scan is proved on any host: it finds the game by `comm`, falls
+back to the command line, and never shells out. macOS is faked to prove the
+platform refusal sentence. The Windows half runs on Windows and proves the
+real check names the method it actually used.
 
 `message_box` is never called from a test. It is a *modal* `MessageBoxW`: the
 first call blocks the process until someone clicks OK, and a test suite that
@@ -54,6 +49,27 @@ def linux(monkeypatch):
 
 
 @pytest.fixture
+def darwin(monkeypatch):
+    """Make this look like macOS to `platform.py` and to nothing else."""
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv(platformmod.FAKE_PLATFORM_ENV, raising=False)
+    assert platformmod.is_macos() is True
+    return "darwin"
+
+
+def _fake_proc(tmp_path, processes):
+    """Build a `/proc` tree: {pid: (comm, cmdline bytes)}."""
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    for pid, (comm, cmdline) in processes.items():
+        entry = proc / str(pid)
+        entry.mkdir()
+        (entry / "comm").write_bytes(comm.encode("utf-8"))
+        (entry / "cmdline").write_bytes(cmdline)
+    return proc
+
+
+@pytest.fixture
 def no_subprocess(monkeypatch):
     """Any attempt to shell out is a test failure, not a fallback."""
     def boom(*a, **k):
@@ -91,41 +107,95 @@ def test_the_fake_platform_env_var_is_honoured_only_under_pytest(monkeypatch):
         sys.modules["pytest"] = pytest
 
 
-# ------------------------------------------------- the off-Windows answers
+# ------------------------------------------------- the Linux process check
 
-def test_off_windows_game_status_has_the_documented_shape(linux, no_subprocess):
+def test_linux_game_status_finds_the_game_by_comm(linux, monkeypatch,
+                                                  tmp_path, no_subprocess):
+    proc = _fake_proc(tmp_path, {4242: ("NMS.exe\n", b"")})
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    st = platformmod.game_status(max_age=0)
+    assert st["running"] is True
+    assert st["known"] is True
+    assert st["pids"] == [4242]
+    assert st["method"] == "proc"
+    assert st["process"] == "NMS.exe"
+    assert "error" not in st
+
+
+def test_linux_game_status_reports_closed_when_nothing_matches(
+        linux, monkeypatch, tmp_path):
+    proc = _fake_proc(tmp_path, {1: ("bash\n", b"/bin/bash\0")})
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    st = platformmod.game_status(max_age=0)
+    assert st["running"] is False, "known-closed is different from not known"
+    assert st["known"] is True
+    assert st["pids"] == []
+    assert st["method"] == "proc"
+
+
+def test_linux_game_status_falls_back_to_the_command_line(
+        linux, monkeypatch, tmp_path):
+    """A Wine version that leaves `comm` as the loader still has the Windows
+    path in argv, and the gate must not answer "closed" about that."""
+    proc = _fake_proc(tmp_path, {
+        77: ("wine64-preloader\n",
+             b"Z:\\games\\No Man's Sky\\NMS.exe\0-binaries\0")})
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    st = platformmod.game_status(max_age=0)
+    assert st["running"] is True and st["pids"] == [77]
+
+
+def test_linux_game_status_matches_a_name_not_a_substring(
+        linux, monkeypatch, tmp_path):
+    proc = _fake_proc(tmp_path, {
+        88: ("NotNMS.exe\n", b"/usr/bin/NotNMS.exe\0")})
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    st = platformmod.game_status(max_age=0)
+    assert st["running"] is False and st["known"] is True
+
+
+def test_linux_game_status_without_a_readable_proc_is_not_known(
+        linux, monkeypatch, tmp_path):
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(tmp_path / "no-proc"))
     st = platformmod.game_status(max_age=0)
     assert st["running"] is None, "tri-state: not False, which reads as closed"
     assert st["known"] is False
-    assert st["method"] == "unsupported: linux"
+    assert st["method"] == "failed"
+    assert st["pids"] == []
+    assert "could not list" in st["error"]
+    said = platformmod.refusal_sentence(st)
+    assert said.startswith("could not read the process list")
+    assert "needs Windows" not in said, \
+        "a Linux /proc that would not read is not a platform refusal"
+
+
+def test_linux_game_status_shells_out_to_nothing(linux, monkeypatch,
+                                                 tmp_path, no_subprocess):
+    """`no_subprocess` raises on the first shell-out; the scan still answers."""
+    proc = _fake_proc(tmp_path, {})
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    st = platformmod.game_status(max_age=0)
+    assert st["method"] == "proc" and st["known"] is True
+
+
+# ------------------------------------------------------- the macOS answer
+
+def test_macos_game_status_has_the_documented_shape(darwin, no_subprocess):
+    st = platformmod.game_status(max_age=0)
+    assert st["running"] is None, "tri-state: not False, which reads as closed"
+    assert st["known"] is False
+    assert st["method"] == "unsupported: darwin"
     assert st["pids"] == []
     assert st["process"] == "NMS.exe"
     assert st["error"] == platformmod.UNSUPPORTED_ERROR
     assert set(st) == {"running", "known", "method", "pids", "process", "error"}
 
 
-def test_off_windows_nothing_is_attempted(linux, no_subprocess, monkeypatch):
-    """No `tasklist`, and no `ctypes.windll` either. `no_subprocess` would
-    raise on the first shell-out; `windll` does not exist off Windows at all,
-    so touching it is an `AttributeError` on the platform this pretends to be.
-    """
-    import ctypes
-    calls = []
-    monkeypatch.setattr(platformmod, "_snapshot_processes",
-                        lambda: calls.append("snapshot") or [])
-    monkeypatch.setattr(platformmod, "_game_status_windows",
-                        lambda: calls.append("windows") or {})
-    st = platformmod.game_status(max_age=0)
-    assert calls == []
-    assert st["known"] is False
-    assert hasattr(ctypes, "windll") or True    # the real guard is `calls`
-
-
-def test_off_windows_the_refusal_sentence_is_exact(linux):
+def test_macos_the_refusal_sentence_is_exact(darwin):
     st = platformmod.game_status(max_age=0)
     assert platformmod.refusal_sentence(st) == (
-        "the process check needs Windows, so it cannot be told whether "
-        "NMS.exe is running; plan and browse work here, apply does not")
+        "the process check needs Windows or Linux, so it cannot be told "
+        "whether NMS.exe is running; plan and browse work here, apply does not")
 
 
 def test_the_windows_unknown_sentence_is_untouched():
@@ -137,7 +207,7 @@ def test_the_windows_unknown_sentence_is_untouched():
     assert "Refusing rather than guessing" in said
     assert "blocking the process list" in said, \
         "and it says what to do about it: %s" % said
-    assert "needs Windows" not in said
+    assert "needs Windows or Linux" not in said
 
 
 def test_refusal_sentence_survives_a_missing_status():
@@ -145,8 +215,107 @@ def test_refusal_sentence_survives_a_missing_status():
     assert "could not read the process list" in platformmod.refusal_sentence({})
 
 
-def test_off_windows_there_is_no_default_save_root(linux):
+def test_linux_without_a_steam_library_has_no_default_save_root(
+        linux, monkeypatch, tmp_path):
+    """Nothing to probe is None, not a made-up `~/.steam` path that would then
+    be reported as an empty save folder."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    assert platformmod.save_roots() == []
     assert platformmod.default_save_root() is None
+
+
+def _proton_root(library, user="steamuser"):
+    """Build one Proton prefix's HelloGames/NMS folder and return its path."""
+    root = os.path.join(str(library), "steamapps", "compatdata",
+                        platformmod.PROTON_APPID, "pfx", "drive_c", "users",
+                        user, "AppData", "Roaming", "HelloGames", "NMS")
+    os.makedirs(root)
+    return root
+
+
+@pytest.fixture
+def linux_home(linux, monkeypatch, tmp_path):
+    """A home directory with no Steam in it, which each test then builds."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return home
+
+
+def test_linux_finds_the_proton_prefix_in_native_steam(linux_home):
+    expected = _proton_root(linux_home / ".local" / "share" / "Steam")
+    assert platformmod.save_roots() == [expected]
+    assert platformmod.default_save_root() == expected
+
+
+def test_linux_reads_every_windows_user_in_the_prefix(linux_home):
+    """Steam's prefix says `steamuser`, but a copied or repaired prefix can
+    say something else, and a folder that is there is evidence."""
+    library = linux_home / ".local" / "share" / "Steam"
+    first = _proton_root(library, "steamuser")
+    second = _proton_root(library, "someone")
+    assert platformmod.save_roots() == [second, first]
+
+
+@pytest.mark.parametrize("parts", platformmod.STEAM_ROOT_PARTS)
+def test_linux_finds_each_known_steam_layout(linux_home, parts):
+    expected = _proton_root(linux_home.joinpath(*parts))
+    assert platformmod.save_roots() == [expected]
+
+
+def test_linux_reads_libraryfolders_for_a_game_on_another_drive(
+        linux_home, tmp_path):
+    """The Steam Deck microSD card and the second drive are both a library
+    outside `$HOME`, named only in `steamapps/libraryfolders.vdf`."""
+    steam = linux_home / ".local" / "share" / "Steam"
+    (steam / "steamapps").mkdir(parents=True)
+    external = tmp_path / "SteamLibrary"
+    external.mkdir()
+    (steam / "steamapps" / "libraryfolders.vdf").write_text(
+        '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n'
+        % external, encoding="utf-8")
+    expected = _proton_root(external)
+    assert platformmod.save_roots() == [expected]
+
+
+def test_linux_does_not_list_one_library_twice(linux_home):
+    """`~/.steam/steam` is a symlink to `~/.local/share/Steam` on a normal
+    install, and the VDF can name the root it already lives in."""
+    steam = linux_home / ".local" / "share" / "Steam"
+    expected = _proton_root(steam)
+    (steam / "steamapps" / "libraryfolders.vdf").write_text(
+        '"libraryfolders"\n{\n\t"0"\n\t{\n\t\t"path"\t\t"%s"\n\t}\n}\n'
+        % steam, encoding="utf-8")
+    assert platformmod.save_roots() == [expected]
+
+
+def test_macos_finds_the_native_save_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv(platformmod.FAKE_PLATFORM_ENV, raising=False)
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    expected = os.path.join(str(home), "Library", "Application Support",
+                            "HelloGames", "NMS")
+    assert platformmod.save_roots() == [expected]
+    assert platformmod.default_save_root() == expected
+
+
+def test_linux_hints_name_the_proton_prefix(linux_home):
+    hints = platformmod.save_path_hints()
+    assert hints
+    assert all("compatdata/%s" % platformmod.PROTON_APPID in path
+               for _label, path in hints)
+
+
+def test_macos_hints_name_the_application_support_folder(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.delenv(platformmod.FAKE_PLATFORM_ENV, raising=False)
+    hints = platformmod.save_path_hints()
+    assert hints == [("Native",
+                      "~/Library/Application Support/HelloGames/NMS")]
 
 
 @pytest.fixture
@@ -237,10 +406,10 @@ def test_off_windows_message_box_is_a_no_op(linux):
 def test_game_status_is_cached_for_two_seconds(linux, monkeypatch):
     assert platformmod.STATUS_CACHE_SECONDS == 2.0
     calls = []
-    monkeypatch.setattr(platformmod, "_game_status_unsupported",
+    monkeypatch.setattr(platformmod, "_game_status_linux",
                         lambda: calls.append(1) or {
-                            "running": None, "known": False, "pids": [],
-                            "method": "unsupported: linux", "process": "NMS.exe"})
+                            "running": False, "known": True, "pids": [],
+                            "method": "proc", "process": "NMS.exe"})
     now = [1000.0]
     monkeypatch.setattr(platformmod.time, "monotonic", lambda: now[0])
 
@@ -260,8 +429,10 @@ def test_game_status_is_cached_for_two_seconds(linux, monkeypatch):
 
 def test_max_age_zero_bypasses_the_cache(linux, monkeypatch):
     calls = []
-    monkeypatch.setattr(platformmod, "_game_status_unsupported",
-                        lambda: calls.append(1) or {"known": False, "pids": []})
+    monkeypatch.setattr(platformmod, "_game_status_linux",
+                        lambda: calls.append(1) or {
+                            "running": False, "known": True, "pids": [],
+                            "method": "proc", "process": "NMS.exe"})
     platformmod.game_status(max_age=0)
     platformmod.game_status(max_age=0)
     assert len(calls) == 2
@@ -269,24 +440,29 @@ def test_max_age_zero_bypasses_the_cache(linux, monkeypatch):
 
 def test_forget_game_status_makes_the_next_call_look(linux, monkeypatch):
     calls = []
-    monkeypatch.setattr(platformmod, "_game_status_unsupported",
-                        lambda: calls.append(1) or {"known": False, "pids": []})
+    monkeypatch.setattr(platformmod, "_game_status_linux",
+                        lambda: calls.append(1) or {
+                            "running": False, "known": True, "pids": [],
+                            "method": "proc", "process": "NMS.exe"})
     platformmod.game_status()
     platformmod.forget_game_status()
     platformmod.game_status()
     assert len(calls) == 2
 
 
-def test_a_caller_cannot_poison_the_cache(linux):
+def test_a_caller_cannot_poison_the_cache(linux, monkeypatch):
     """The answer is handed out as a copy. A route that annotates the dict it
     got -- and `bootstrap` does put it inside a bigger one -- must not change
     what the next caller, which may be the write gate, is told."""
+    monkeypatch.setattr(platformmod, "_game_status_linux", lambda: {
+        "running": False, "known": True, "pids": [], "method": "proc",
+        "process": "NMS.exe"})
     first = platformmod.game_status()
-    first["running"] = False
-    first["known"] = True
+    first["running"] = True
+    first["known"] = False
     first["pids"].append(4321)
     second = platformmod.game_status()
-    assert second["running"] is None and second["known"] is False
+    assert second["running"] is False and second["known"] is True
     assert second["pids"] == []
     assert first is not second
 
@@ -306,13 +482,24 @@ def test_state_dir_falls_back_to_local_share(monkeypatch, tmp_path):
     assert got.endswith(os.path.join(".local", "share", "NMS-Sorter"))
 
 
-def test_the_save_root_is_one_path_and_no_second_strategy(monkeypatch, tmp_path):
+def test_the_windows_save_root_is_the_appdata_folder(monkeypatch, tmp_path):
     monkeypatch.delenv(platformmod.FAKE_PLATFORM_ENV, raising=False)
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setenv("APPDATA", str(tmp_path))
-    assert platformmod.default_save_root() == os.path.join(
-        str(tmp_path), "HelloGames", "NMS")
+    expected = os.path.join(str(tmp_path), "HelloGames", "NMS")
+    assert platformmod.default_save_root() == expected
+    assert platformmod.save_roots() == [expected]
     assert platformmod.SAVE_ROOT_PARTS == ("HelloGames", "NMS")
+
+
+def test_windows_hints_keep_the_three_layouts(monkeypatch):
+    monkeypatch.delenv(platformmod.FAKE_PLATFORM_ENV, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    hints = platformmod.save_path_hints()
+    assert [label for label, _path in hints] == [
+        "Steam", "GOG", "Microsoft Store / Game Pass"]
+    assert "DefaultUser" in hints[1][1]
+    assert "not supported" in hints[2][1]
 
 
 # -------------------------------------------------------- the frozen build
@@ -519,8 +706,8 @@ def test_on_windows_has_console_answers_without_raising():
 
 # ------------------------------------- the refusal, through the write path
 
-def test_apply_refuses_off_windows_with_exactly_the_documented_sentence(
-        linux, no_subprocess, tmp_path):
+def test_apply_refuses_on_macos_with_exactly_the_documented_sentence(
+        darwin, no_subprocess, tmp_path):
     """The sentence has to come out of `safety.apply_plan` step 1, not just
     out of `refusal_sentence`, and it has to come out *before* anything is
     copied, decoded or written.
@@ -528,7 +715,7 @@ def test_apply_refuses_off_windows_with_exactly_the_documented_sentence(
     Deliberately not using `conftest.no_game_running`: that fixture stubs
     `game_status` to "closed and known", which is what lets the other 900
     tests exercise steps 2 to 12 on this machine and off it. This one test
-    needs the real off-Windows answer.
+    needs the real macOS answer.
     """
     from nms_sorter import safety
 
@@ -545,8 +732,8 @@ def test_apply_refuses_off_windows_with_exactly_the_documented_sentence(
 
     said = str(e.value)
     assert said == (
-        "game: the process check needs Windows, so it cannot be told whether "
-        "NMS.exe is running; plan and browse work here, apply does not")
+        "game: the process check needs Windows or Linux, so it cannot be told "
+        "whether NMS.exe is running; plan and browse work here, apply does not")
     # nothing was written, not even a backup folder
     assert not backups.exists()
     assert save.read_bytes() == b"not a real save, and it is never read"
@@ -554,10 +741,9 @@ def test_apply_refuses_off_windows_with_exactly_the_documented_sentence(
     assert not os.path.exists(str(save) + safety.LOCK_SUFFIX)
 
 
-def test_plan_and_browse_are_unaffected_off_windows(linux, no_subprocess):
-    """Only apply refuses. The item table, the codec and the bucket list are
-    platform-neutral and stay that way -- Ubuntu CI is what proves it, and
-    this asserts the same thing on the machine doing the faking."""
+def test_plan_and_browse_work_without_a_process_check(linux, no_subprocess):
+    """The item table, the codec and the bucket list are platform-neutral and
+    do not ask whether the game is running."""
     from nms_sorter.itemdb import db
     d = db()
     assert len(d.buckets) >= 17
@@ -579,7 +765,7 @@ def test_the_refusal_sentence_is_in_the_docs(linux):
     hits = 0
     for name in ("SAFETY.md", "TROUBLESHOOTING.md"):
         with io.open(os.path.join(ROOT, "docs", name), encoding="utf-8") as fh:
-            if "the process check needs Windows" in fh.read():
+            if "the process check needs Windows or Linux" in fh.read():
                 hits += 1
     assert hits, ("neither docs/SAFETY.md nor docs/TROUBLESHOOTING.md carries "
                   "the platform refusal sentence; the paragraphs are in the "

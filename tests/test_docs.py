@@ -814,8 +814,8 @@ INTERPOLATED_HEADINGS = [
      "then tick \"I am at the main menu, not in a loaded save\" and try "
      "again.",
      "nms_sorter/safety.py"),
-    ("the process check needs Windows, so it cannot be told whether NMS.exe "
-     "is running; plan and browse work here, apply does not",
+    ("the process check needs Windows or Linux, so it cannot be told whether "
+     "NMS.exe is running; plan and browse work here, apply does not",
      "nms_sorter/platform.py"),
     ("This needs Python 3.9 or newer and this is Python ...",
      "nms_sorter/__main__.py"),

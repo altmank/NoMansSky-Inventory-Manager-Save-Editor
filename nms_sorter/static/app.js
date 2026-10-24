@@ -6243,9 +6243,12 @@ async function checkSaveFolders(key) {
   const box = $("#setfound-" + key); box.innerHTML = "";
   try {
     const d = await api("/api/detect-saves");
-    box.appendChild(el("p", "hint", d.root_exists
-      ? `looked in ${d.root}`
-      : `${d.root} does not exist on this machine`));
+    const roots = d.roots || (d.root ? [d.root] : []);
+    box.appendChild(el("p", "hint", roots.length
+      ? (d.root_exists
+         ? `looked in ${roots.join(", ")}`
+         : `${roots.join(", ")} does not exist on this machine`)
+      : "no usual save folder was found on this machine"));
     if (!(d.folders || []).length) {
       box.appendChild(el("p", "hint",
         "no save folder found there. Type the folder holding save.hg yourself; " +

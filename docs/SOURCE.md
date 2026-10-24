@@ -25,8 +25,13 @@ Flags pass straight through, for example `packaging\start.bat --folder "D:\my sa
 
 ## What differs from the executable
 
-- Apply is Windows only on both. From source on Linux or macOS you can browse, plan and dry-run
-  a save, and nothing is ever written.
+- Apply works on Windows, and from source on Linux. On Linux the game process is visible as
+  `NMS.exe` in `/proc`, so the write gate can answer whether it is running. On macOS you can
+  browse, plan and dry-run a save, and nothing is ever written, because there is no measured
+  macOS process check.
+- The first-run page finds the save folder on its own: `%APPDATA%\HelloGames\NMS` on Windows, the
+  game's Steam Proton prefix in each Steam library on Linux, and
+  `~/Library/Application Support/HelloGames/NMS` on macOS. `--folder` overrides the search.
 - Stopping: ctrl-c in the window you started it from, or **Stop the sorter** at the foot of
   the Settings section.
 - Settings, configuration, backups and the log live in the same place as for the executable; see

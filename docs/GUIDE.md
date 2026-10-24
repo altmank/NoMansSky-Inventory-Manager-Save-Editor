@@ -11,24 +11,37 @@ The first page asks one question:
 
 ![The first-run page](images/first-run.png)
 
-To answer it the sorter looks in exactly one place,
-`%APPDATA%\HelloGames\NMS`, and lists the folders there named `st_*` or
-`DefaultUser`, plus the root itself if you have hand-copied saves into it. Each
-row shows how many save files it holds, when the newest was written, and the
-newest save's own summary and play time, which is the line that tells two Steam
-profiles apart: `Aboard Iigash Station Sigma` beside `24h played` is something
-you recognise, and `st_76561198000000001` is not. No save file is opened to
-render that page.
+To answer it the sorter looks where the game writes saves on the platform it is
+running on. On Windows that is `%APPDATA%\HelloGames\NMS`. On Linux the game
+runs through Steam's Proton, so it looks inside the game's prefix in every
+Steam library it finds:
+
+```
+<steam library>/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS
+```
+
+Native Steam (`~/.local/share/Steam`), Flatpak Steam and Snap Steam are all
+checked, and so is every additional library named in
+`steamapps/libraryfolders.vdf`, which is where a Steam Deck microSD card and a
+second drive put the game. On macOS the folder is
+`~/Library/Application Support/HelloGames/NMS`. In every folder it finds, it
+lists the folders named `st_*` or `DefaultUser`, plus the root itself if you
+have hand-copied saves into it. Each row shows how many save files it holds,
+when the newest was written, and the newest save's own summary and play time,
+which is the line that tells two Steam profiles apart: `Aboard Iigash Station
+Sigma` beside `24h played` is something you recognise, and
+`st_76561198000000001` is not. No save file is opened to render that page.
 
 - **One folder found**: it is offered with a **Use this folder** button.
 - **Several found**: all listed, and none chosen for you. Sorting the wrong
   account is not something you can undo from inside the game.
 - **None found**: the page says "No No Man's Sky save folder was found." and
-  names the three layouts it knows: Steam at
+  names the layouts for the platform it is on. On Windows that is Steam at
   `%APPDATA%\HelloGames\NMS\st_<your steam id>`, GOG at
   `%APPDATA%\HelloGames\NMS\DefaultUser`, and Microsoft Store / Game Pass,
   which is **not supported**, because that save is in a container format this
-  tool has never seen.
+  tool has never seen. On Linux it is the Proton path shown above, under
+  native and Flatpak Steam. On macOS it is the `Application Support` folder.
 
 **Look again** is on every branch of the page. It re-reads the folder list
 without a restart, which is what you want after plugging a drive in or copying
@@ -612,10 +625,12 @@ the section says how many fields are held. Saving the others still works.
 them: "Port takes effect on restart. This run keeps the value it started with."
 
 The save folder has a **Find my save folder** button under it. It lists the save folders it
-can find in the usual place and offers **use this one** for each, with how many
-saves it holds and when the newest was written. It looks in
-`%APPDATA%\HelloGames\NMS` and nowhere else, and says so; there is deliberately
-no search of the whole machine, because a wrong guess sorts the wrong account.
+can find in the places the game writes on this platform and offers **use this one** for each,
+with how many saves it holds and when the newest was written. On Windows it looks in
+`%APPDATA%\HelloGames\NMS`; on Linux it looks inside the Steam Proton prefix in every Steam
+library it finds; on macOS it looks in `~/Library/Application Support/HelloGames/NMS`. It
+searches no further than those roots, and says where it looked; there is deliberately no
+search of the whole machine, because a wrong guess sorts the wrong account.
 If a command-line flag is holding the save folder for this run the list still
 appears, but there is nothing to press: each row says "a command-line flag is
 holding this field for this run".

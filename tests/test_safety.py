@@ -237,6 +237,36 @@ def _unchanged(lab):
     return open(lab["target"], "rb").read() == lab["before"]
 
 
+def _fake_proc(tmp_path, processes):
+    """Build a `/proc` tree: {pid: (comm, cmdline bytes)}."""
+    proc = tmp_path / "proc"
+    proc.mkdir()
+    for pid, (comm, cmdline) in processes.items():
+        entry = proc / str(pid)
+        entry.mkdir()
+        (entry / "comm").write_bytes(comm.encode("utf-8"))
+        (entry / "cmdline").write_bytes(cmdline)
+    return proc
+
+
+def _use_fake_proc(monkeypatch, tmp_path, processes):
+    """Point the real Linux check at a temp process table, not this machine's.
+
+    The platform is faked too, so the test proves the Linux branch on any host
+    without ever reading the operator's own `/proc`.
+    """
+    monkeypatch.setenv(platformmod.FAKE_PLATFORM_ENV, "linux")
+    proc = _fake_proc(tmp_path, processes)
+    monkeypatch.setattr(platformmod, "PROC_ROOT", str(proc))
+    # `test_safety.py`'s module-scoped `no_game_running` fixture may already
+    # have replaced the function this module imported. Put the real one back
+    # for this test, so the fake `/proc` is what answers.
+    monkeypatch.setattr(safety, "game_status", platformmod.game_status)
+    monkeypatch.setattr(safety, "GAME_PROCESS", platformmod.GAME_PROCESS)
+    platformmod.forget_game_status()
+    return proc
+
+
 # --- D9: the lock, the pid in the temp name, the cleanup -------------------
 
 #: a pid nothing has, and one every platform this suite runs on can prove is
@@ -527,14 +557,14 @@ def test_the_eight_character_prefix_is_still_accepted(write_lab,
     assert res["rows"], "the short form still applies"
 
 
-# --- step 1 off Windows -----------------------------------------------------
+# --- step 1: a check that cannot run ---------------------------------------
 
 
 def test_a_process_check_that_cannot_run_refuses_and_writes_nothing(
         write_lab, monkeypatch):
-    """A check that cannot run is a refusal. Off Windows there is no
-    `ctypes.windll` and no `tasklist`, so this is the branch Ubuntu takes and
-    the reason apply is Windows-only."""
+    """A check that cannot run is a refusal. On Windows and on Linux the
+    process list can exist and still fail to read; on macOS there is no check
+    at all. Either way, apply refuses."""
     monkeypatch.setattr(safety, "game_status", lambda: {
         "running": None, "pids": [], "method": "failed", "known": False,
         "process": "NMS.exe", "error": "no windll / no tasklist"})
@@ -649,6 +679,29 @@ def test_a_closed_game_is_recorded_in_the_manifest_too(write_lab,
     assert res["manifest"]["game"] == "game closed", res["manifest"]
 
 
+def test_the_real_linux_check_lets_an_apply_through(write_lab, monkeypatch,
+                                                    tmp_path):
+    """No stubbed answer: the `/proc` scan says closed, and the write runs."""
+    _use_fake_proc(monkeypatch, tmp_path, {})
+    rep, res = _apply(write_lab)
+    step = [s for s in rep.steps if s["label"] == "game"][0]
+    assert step["state"] == "ok", step
+    assert step["detail"] == "NMS.exe is not in the process list (proc)"
+    assert res["rows"], "the apply ran"
+
+
+def test_the_real_linux_check_refuses_while_nms_runs(write_lab, monkeypatch,
+                                                     tmp_path):
+    """The same scan, with the game up: step 1 refuses before the backup."""
+    _use_fake_proc(monkeypatch, tmp_path, {4242: ("NMS.exe\n", b"")})
+    with pytest.raises(safety.Refused) as exc:
+        _apply(write_lab)
+    assert "NMS.exe is running as pid 4242" in str(exc.value), exc.value
+    assert _unchanged(write_lab), "and nothing is written"
+    assert not os.path.isdir(write_lab["backups"]), \
+        "the refusal comes before the backup, so there is not even a folder"
+
+
 #: `CreateFileW` with `GENERIC_READ` and `FILE_SHARE_READ`: other readers are
 #: let in and everything else is denied, which is what a process with the file
 #: open for its own use looks like from outside. Steps 3 to 8 read the save and
@@ -730,11 +783,11 @@ def test_a_save_the_operator_cannot_write_is_not_blamed_on_the_game(
 def test_the_confirmation_does_not_cover_an_unreadable_process_list(
         write_lab, monkeypatch):
     """The tick says *where* the player is, not whether the game is up, so it
-    cannot stand in for an answer that could not be got at all. Off Windows
-    there is no process list and no error string, so the sentence is the
-    platform one rather than "could not read the process list (None)"."""
+    cannot stand in for an answer that could not be got at all. On macOS there
+    is no process check and no error string, so the sentence is the platform
+    one rather than "could not read the process list (None)"."""
     monkeypatch.setattr(safety, "game_status", lambda: {
-        "running": None, "pids": [], "method": "unsupported: linux",
+        "running": None, "pids": [], "method": "unsupported: darwin",
         "known": False, "process": "NMS.exe"})
     with pytest.raises(safety.Refused) as exc:
         _apply(write_lab, at_main_menu=True)
@@ -2279,11 +2332,11 @@ def test_a_manifest_that_names_no_save_is_not_restored(tmp_path):
 
 def test_a_restore_refuses_when_the_process_check_cannot_run(applied_lab,
                                                              monkeypatch):
-    """Off Windows, and on a Windows box where the process list will not read.
-    A check that cannot run is a refusal, in a restore exactly as in an
+    """On macOS, and on a Windows or Linux box where the process list will not
+    read. A check that cannot run is a refusal, in a restore exactly as in an
     apply."""
     monkeypatch.setattr(safety, "game_status", lambda: {
-        "running": None, "pids": [], "method": "unsupported: linux",
+        "running": None, "pids": [], "method": "unsupported: darwin",
         "known": False, "process": "NMS.exe"})
     written = open(applied_lab["target"], "rb").read()
     with pytest.raises(safety.Refused) as exc:

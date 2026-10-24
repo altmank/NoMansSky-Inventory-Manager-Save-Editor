@@ -22,6 +22,7 @@ if os.path.dirname(HERE) not in sys.path:
     sys.path.insert(0, os.path.dirname(HERE))
 
 from nms_sorter import pages                                       # noqa: E402
+from nms_sorter import platform as platformmod                     # noqa: E402
 from nms_sorter import settings as settingsmod                     # noqa: E402
 from nms_sorter.settings import Settings                           # noqa: E402
 
@@ -492,14 +493,34 @@ def test_first_run_page_with_several_folders_picks_nothing():
     assert "will not choose for you" in html
 
 
-def test_first_run_page_with_nothing_found_lists_the_three_paths():
-    html = pages.first_run([], root="C:\\AppData\\HelloGames\\NMS")
+def test_first_run_page_with_nothing_found_lists_the_three_paths(monkeypatch):
+    monkeypatch.setenv(platformmod.FAKE_PLATFORM_ENV, "win32")
+    html = pages.first_run([], root="C:\\AppData\\HelloGames\\NMS",
+                           hints=platformmod.save_path_hints())
     assert "<h1>%s</h1>" % htmlmod.escape(pages.NO_SAVES_H1,
                                           quote=True) in html
     assert "st_" in html and "DefaultUser" in html
     assert "not supported" in html                 # Microsoft Store
     assert "C:\\AppData\\HelloGames\\NMS" in html
     assert 'name="save_folder"' in html            # the text field
+
+
+def test_first_run_page_with_nothing_found_lists_the_linux_prefixes(
+        monkeypatch):
+    monkeypatch.setenv(platformmod.FAKE_PLATFORM_ENV, "linux")
+    html = pages.first_run([], hints=platformmod.save_path_hints())
+    assert pages.NO_SAVES_H1.replace("'", "&#x27;") in html
+    assert "Steam (Proton)" in html and "Flatpak Steam" in html
+    assert "275850" in html
+    assert "usual save folder for this platform" in html
+
+
+def test_first_run_page_lists_every_root_that_was_probed():
+    """A Linux machine can have several Steam libraries, so the page names
+    all of them rather than only the first."""
+    html = pages.first_run([], roots=["/a/HelloGames/NMS", "/b/HelloGames/NMS"])
+    assert "/a/HelloGames/NMS" in html and "/b/HelloGames/NMS" in html
+    assert "any of these folders" in html
 
 
 def test_first_run_page_says_when_the_chosen_folder_had_no_saves():

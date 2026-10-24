@@ -6,9 +6,11 @@
 #      packaging/start.sh --help
 #      packaging/start.sh --read-only
 #
-#  Linux and macOS run the browser, the planner and the codec perfectly well.
-#  Apply refuses there and says why: the process check needs Windows, and a
-#  wrong "No Man's Sky is not running" answer loses play (GOAL.md 2.3).
+#  Linux runs the browser, the planner, the codec and apply: the game shows
+#  up as NMS.exe in /proc, so the write gate can answer whether it is
+#  running. macOS runs the browser, the planner and the codec, and apply
+#  refuses there: there is no measured macOS process check, and a wrong "No
+#  Man's Sky is not running" answer loses play (GOAL.md 2.3).
 #
 #  Exit codes match the application: 3 no free port, 4 Python too old or
 #  absent.

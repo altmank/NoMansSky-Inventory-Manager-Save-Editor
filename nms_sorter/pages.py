@@ -183,16 +183,10 @@ def data_missing(detail, filename=None):
 FIRST_RUN_H1 = "Which folder holds your No Man's Sky saves?"
 NO_SAVES_H1 = "No No Man's Sky save folder was found."
 
-#: the only three places this program will talk about. It probes exactly one
-#: root (`%APPDATA%\HelloGames\NMS`); everything else is a sentence and a text
-#: field, because a wrong guess sorts the wrong account (GOAL.md Rule 1).
-PATH_HINTS = [
-    ("Steam", "%APPDATA%\\HelloGames\\NMS\\st_&lt;your steam id&gt;"),
-    ("GOG", "%APPDATA%\\HelloGames\\NMS\\DefaultUser"),
-    ("Microsoft Store / Game Pass",
-     "not supported; the save is in a container format this tool has never "
-     "seen. See docs/TROUBLESHOOTING.md."),
-]
+#: The layouts `platform.save_path_hints()` names are the only ones this
+#: program will talk about. It probes the folders the game writes on this
+#: platform and nothing else, because a wrong guess sorts the wrong account
+#: (GOAL.md Rule 1).
 
 _SCRIPT = (
     "<script>\n"
@@ -274,24 +268,34 @@ def _look_again():
             "the folder list again; changes nothing</span></p>")
 
 
-def _hints():
-    rows = ["<li><b>%s</b>: <code>%s</code></li>" % (name, path)
-            for name, path in PATH_HINTS]
+def _hints(hints):
+    if not hints:
+        return ""
+    rows = ["<li><b>%s</b>: <code>%s</code></li>" % (_esc(name), _esc(path))
+            for name, path in hints]
     return "<ul>%s</ul>" % "".join(rows)
 
 
-def _typein(current=""):
+#: the placeholder shown when no platform hint is available. Kept as the
+#: Windows path because that is the layout every sentence in the documents
+#: quotes, and a caller with a platform's own hint passes it in.
+TYPEIN_PLACEHOLDER = (
+    "C:\\Users\\you\\AppData\\Roaming\\HelloGames\\NMS\\st_...")
+
+
+def _typein(current="", placeholder=None):
+    shown = placeholder or TYPEIN_PLACEHOLDER
     return (
         "<h2>Or type the folder</h2>"
         "<form method=\"post\" action=\"/api/settings\">"
         "<p><input type=\"text\" name=\"save_folder\" value=\"%s\" "
-        "placeholder=\"C:\\Users\\you\\AppData\\Roaming\\HelloGames\\NMS\\st_...\" "
+        "placeholder=\"%s\" "
         "autofocus></p>"
         "<button type=\"submit\" aria-label=\"Use the folder typed above\">"
         "Use this folder</button></form>"
         "<p class=\"note\">Paste the folder that holds <code>save.hg</code>, "
         "<code>save2.hg</code> and their <code>mf_</code> partners, not one of "
-        "the files.</p>" % _esc(current))
+        "the files.</p>" % (_esc(current), _esc(shown)))
 
 
 #: the two answers `invalid=` can carry, and the sentence for each. W6: one
@@ -313,19 +317,29 @@ def _invalid_sentence(kind, current):
             "files, so it is not a save folder. Nothing was changed.</p>")
 
 
-def first_run(folders, root=None, current="", invalid=False):
+def first_run(folders, root=None, current="", invalid=False, roots=None,
+              hints=None):
     """The first-run page. `folders` is what `GET /api/detect-saves` returned.
 
     Exactly one candidate is shown as one offer plus "choose another"; several
     are listed with their newest save time and nothing is picked for the
     operator (Rule 1: "picking silently is how the wrong account gets
-    sorted"); none is the three paths and a text field.
+    sorted"); none is the layouts this platform uses and a text field.
+
+    `roots` is every folder the probe looked in, and `root` is the first of
+    them. A Linux machine can have several Steam libraries, so "nothing was
+    found under <one path>" would name only one of the places that was tried.
+    `hints` comes from `platform.save_path_hints()`; without it the page shows
+    no layout list and keeps the Windows placeholder in the text field, which
+    is what a direct call in a test gets.
 
     `invalid` is `INVALID_NO_FOLDER`, `INVALID_NO_SAVES`, or falsey. `True` is
     still accepted and reads as `INVALID_NO_SAVES`, which is what it always
     meant.
     """
     folders = list(folders or [])
+    hints = list(hints or [])
+    placeholder = hints[0][1] if hints else None
     if len(folders) == 1:
         h1 = FIRST_RUN_H1
         body = [
@@ -334,7 +348,7 @@ def first_run(folders, root=None, current="", invalid=False):
             "<p class=\"note\">Nothing is written to your save until you ask "
             "for it, and this button only records the folder.</p>",
             _look_again(),
-            _typein(current),
+            _typein(current, placeholder),
         ]
     elif folders:
         h1 = FIRST_RUN_H1
@@ -345,17 +359,34 @@ def first_run(folders, root=None, current="", invalid=False):
             % len(folders),
             "<ul>%s</ul>" % "".join(_folder_line(f) for f in folders),
             _look_again(),
-            _typein(current),
+            _typein(current, placeholder),
         ]
     else:
         h1 = NO_SAVES_H1
-        body = [
-            "<p>Nothing was found under <code>%s</code>. That is the only "
-            "place this tool looks; the three layouts it knows about are:</p>"
-            % _esc(root or "%APPDATA%\\HelloGames\\NMS"),
-            _hints(),
+        looked = [r for r in (roots if roots is not None else [root]) if r]
+        if len(looked) > 1:
+            where = [
+                "<p>Nothing was found under any of these folders:</p>",
+                "<ul>%s</ul>" % "".join(
+                    "<li><code>%s</code></li>" % _esc(r) for r in looked),
+                "<p>Those are the places this tool looks; the layouts it knows "
+                "about are:</p>",
+            ]
+        elif looked:
+            where = [
+                "<p>Nothing was found under <code>%s</code>. That is the only "
+                "place this tool looks; the layouts it knows about are:</p>"
+                % _esc(looked[0]),
+            ]
+        else:
+            where = [
+                "<p>Nothing was found in the usual save folder for this "
+                "platform. The layouts this build knows about are:</p>",
+            ]
+        body = where + [
+            _hints(hints),
             _look_again(),
-            _typein(current),
+            _typein(current, placeholder),
         ]
     if invalid:
         kind = invalid if isinstance(invalid, str) else INVALID_NO_SAVES

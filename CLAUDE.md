@@ -20,7 +20,7 @@ One HTML document, one stylesheet, one script, no framework, no bundler.
 |---|---|
 | `nms_sorter/__main__.py` | `python -m nms_sorter`; checks the Python floor before importing anything else |
 | `nms_sorter/cli.py` | flags, settings resolution, single-instance acquisition, browser launch, serve loop |
-| `nms_sorter/platform.py` | the only module that branches on the OS: game process check, state and runtime directories, single instance, frozen-build helpers |
+| `nms_sorter/platform.py` | the only module that branches on the OS: save folder discovery, game process check, state and runtime directories, single instance, frozen-build helpers |
 | `nms_sorter/settings.py` | `settings.json`; never crashes on a bad file, keeps unknown keys |
 | `nms_sorter/config.py` | the rules file: load, validate, migrate, save; `config_version` 2; five rotating `.bak` revisions |
 | `nms_sorter/codec.py` | the only place save bytes become Python and back: block framing, obfuscated-key JSON, the `mf_` metadata codec |
@@ -70,7 +70,7 @@ must match what was approved. `restore()` is the same shape in reverse and refus
 has written since the apply. A change to `safety.py`, `codec.py`, `savemodel.py` or `planner.py`
 must leave the written bytes identical for every existing test; a test pins this.
 
-**Refused, not supported.** Apply off Windows; expedition saves; `mf_` formats other than 2004;
+**Refused, not supported.** Apply on macOS; expedition saves; `mf_` formats other than 2004;
 saves older than Waypoint (4.0); Game Pass, console and Switch saves. Refusing an unbuilt
 permutation is the policy. Do not add support without a full test campaign.
 
