@@ -58,26 +58,13 @@ DATA = os.path.join(REPO, "nms_sorter", "data")
 # string inside a generated header is a value here instead, so the header is
 # generated from the data and cannot drift from it.
 #
-# 25320008 is the installed Steam build (`appmanifest_275850.acf`, patched
-# 2026-09-15). The tables were decompiled from 25233815, and this is not a
-# guess that nothing moved: every input `items.json` is built from was
-# extracted again from the new paks with `tools/hgpak.py` and compared byte
-# for byte. `nms_reality_gcproducttable`, `gcsubstancetable`,
-# `gctechnologytable`, `gcproceduraltechnologytable`, `legacyitemtable`,
-# `legacybasebuildingtable` and `proceduralproducttable` are identical;
-# `consumableitemtable` differs in 8 bytes, all of them inside the 0x60-byte
-# MBIN header; `basebuildingobjectstable` differs in exactly one byte, a 0x01
-# that became 0x00. The localisation the names come from is identical in
-# `nms_loc1` and `nms_loc4` -- where every grid-name key lives -- and in
-# `nms_loc6`; `nms_loc9` changed, and the Corvette keys this build reads are
-# still in it.
-#
-# What that leaves open, and what a `--tables` run is for: whether that one
-# base-building byte moves a row. `docs/POST-PATCH.md` is still the playbook,
-# and it has not been run for this build.
-GAME_BUILD = "25320008"
-GAME_VERSION = "7.01 Cosmos"
-MBINCOMPILER = "7.02.0.1"
+# 26295378 is the installed Steam build (`appmanifest_275850.acf`, patched
+# 2026-10-29, 7.10 Forsaken). The tables were extracted from that build's paks
+# with `tools/hgpak.py` and decompiled with MBINCompiler 7.10.0.1, released
+# for Forsaken itself, which is the safe direction to be off in.
+GAME_BUILD = "26295378"
+GAME_VERSION = "7.10 Forsaken"
+MBINCOMPILER = "7.10.0.1"
 
 OUT_FILES = ("items.json", "buckets.json", "stacks.json", "savekeys.json",
              "vehicles.json", "gridnames.json", "DATA_VERSION", "DATA_COUNTS")

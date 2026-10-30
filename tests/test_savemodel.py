@@ -966,16 +966,18 @@ def test_the_base_fixture_has_no_gates(synthetic_save):
 
 
 def test_the_supported_version_range_is_the_corpus():
-    """4670 to 4735 inclusive, and the floor is 4670 because that is the oldest
-    save in the operator's corpus that carries `BaseContext`: `save6.hg` is
-    4670, `save3/4/5/7` are 4734 and `save9/10` are 4735. 4645 (`save.hg`,
-    `save2.hg`) has no `BaseContext` and is refused before a version gate could
-    speak, which is why the floor is not 4645."""
-    assert savemodel.SUPPORTED_VERSIONS == (4670, 4735), \
+    """4670 to 4743 inclusive. The floor is 4670 because that is the oldest
+    save in the operator's corpus that carries `BaseContext` (`save6.hg`);
+    4645 (`save.hg`, `save2.hg`) has no `BaseContext` and is refused before a
+    version gate could speak, which is why the floor is not 4645. The top is
+    4743, the version `save3.hg`, `save4.hg` and `save9.hg` report after the
+    7.10 build rewrote them, and all three round-trip and apply in the
+    corpus."""
+    assert savemodel.SUPPORTED_VERSIONS == (4670, 4743), \
         "the range is the corpus, not a guess: %s" % (
             savemodel.SUPPORTED_VERSIONS,)
     lo, hi = savemodel.SUPPORTED_VERSIONS
-    assert lo <= 4670 <= hi and lo <= 4734 <= hi and lo <= 4735 <= hi, \
+    assert lo <= 4670 <= hi and lo <= 4743 <= hi, \
         "every version the corpus proved loads is inside it"
     assert not lo <= 4645 <= hi, \
         "and 4645 is outside it: that save has no BaseContext at all"
@@ -1039,7 +1041,7 @@ def test_a_version_outside_the_range_is_a_note_not_a_refusal(
         "one gate, at note level: %s" % gates
     assert gates[0]["message"] == (
         "this save reports version 4800; this build was verified on 4670 to "
-        "4735. Apply proceeds: the round-trip and nothing-else-changed checks "
+        "4743. Apply proceeds: the round-trip and nothing-else-changed checks "
         "run on this exact file. Settings can turn on strict_version_check to "
         "refuse instead."), gates[0]["message"]
     assert "refused" not in gates[0]["message"], \
@@ -1063,7 +1065,7 @@ def test_strict_version_check_is_the_other_sentence(fixture_variant,
         "strict makes it a warning, which is the level step 1b refuses: %s" % gates
     assert gates[0]["message"] == (
         "this save reports version 4800; this build was verified on 4670 to "
-        "4735, and strict_version_check is on, so apply is refused."), \
+        "4743, and strict_version_check is on, so apply is refused."), \
         gates[0]["message"]
     assert "fixture" not in gates[0]["message"], \
         "a fixture is a maintainer's word, not a player's"

@@ -270,7 +270,7 @@ def save_warnings(save, strict=False):
     """`SaveFile.gates()` as a list.
 
     A gate that refuses raises; a gate that only warns -- "this save reports
-    Version 4740 and 4735 is the newest one that was verified" -- has to reach
+    Version 4800 and 4743 is the newest one that was verified" -- has to reach
     the page, or the operator approves a plan drawn with a caveat nobody showed
     them (GOAL.md §3.3, P6-2).
 
@@ -828,7 +828,7 @@ def save_view(save, labels=None, cfg=None, applied=None, strict=False):
         # what the *game* wrote, e.g. "Win|Final"; the host's platform is a
         # separate field on /api/health and they answer different questions.
         "save_platform": save_platform(save),
-        # the save's own warnings, not the config's: "verified up to 4735" is
+        # the save's own warnings, not the config's: "verified up to 4743" is
         # a caveat on the plan, and a caveat nobody is shown is not a caveat.
         "gates": save_warnings(save, strict),
         "difficulty": difficulty,

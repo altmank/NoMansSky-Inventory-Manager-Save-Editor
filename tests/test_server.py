@@ -1435,7 +1435,7 @@ def test_apply_refuses_an_unverified_version_only_in_strict_mode(srv,
         if kw.get("strict_version_check"):
             raise safety.Refused(
                 "this save reports version 4800; this build was verified on "
-                "4670 to 4735, and strict_version_check is on, so apply is "
+                "4670 to 4743, and strict_version_check is on, so apply is "
                 "refused.")
         return safety.Report(), {"rows": 1, "backup": str(srv.tmp)}
 
@@ -1826,7 +1826,7 @@ def test_the_version_gate_reaches_the_page_worded_for_the_mode(
     assert len(rows) == 1 and rows[0]["level"] == level, b["gates"]
     msg = rows[0]["message"]
     assert msg.startswith("this save reports version 4800; this build was "
-                          "verified on 4670 to 4735"), msg
+                          "verified on 4670 to 4743"), msg
     assert tail in msg, msg
     assert msg.endswith("."), "every sentence in it is punctuated: %s" % msg
     assert ("Apply proceeds" in msg) is (not strict), \

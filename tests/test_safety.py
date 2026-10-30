@@ -2856,8 +2856,8 @@ def test_a_save_that_cannot_be_copied_into_the_backup_is_a_sentence(
 # ===========================================================================
 #
 # DECISIONS.md, "A game update must not turn the tool off". The gate was a
-# refusal and the refusal had no evidence under it: 4670, 4734 and 4735 have
-# identical container layouts, and every break anybody can name -- Waypoint
+# refusal and the refusal had no evidence under it: every widening has found
+# the same containers, and every break anybody can name -- Waypoint
 # moving the player state under `BaseContext`, the 3.60 compression change, the
 # `mf_` format going 2001 to 2004 -- is detected by shape somewhere else in
 # this file. So the default records the version and carries on, and steps 4, 6
@@ -2924,7 +2924,7 @@ def test_a_version_outside_the_range_applies_and_says_so(version_lab,
         "the version is recorded rather than passed over: %s" % step
     assert step["detail"] == (
         "this save reports version 4800, outside the range this build was "
-        "verified on (4670 to 4735); continuing, because the round-trip and "
+        "verified on (4670 to 4743); continuing, because the round-trip and "
         "nothing-else-changed checks run on this file regardless"), step
     assert res["rows"], "and the apply ran: %s" % res
 
@@ -2946,7 +2946,7 @@ def test_strict_version_check_refuses_with_the_documented_sentence(
         _apply(version_lab, fingerprint=version_lab["plan"].fingerprint_full,
                strict_version_check=True)
     assert "this save reports version 4800; this build was verified on 4670 " \
-           "to 4735, and strict_version_check is on, so apply is refused." \
+           "to 4743, and strict_version_check is on, so apply is refused." \
            in str(exc.value), \
         "the strict refusal is the sentence the documents quote: %s" % exc.value
     assert "fixture" not in str(exc.value), \

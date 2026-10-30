@@ -9,6 +9,28 @@ A data-only regeneration after a game patch bumps the patch version and
 
 ## [Unreleased]
 
+### Changed
+
+- The item table is regenerated from game build 26295378 (7.10 Forsaken).
+  225 ids are new: 216 corvette construction modules (the cockpits, habs, hull
+  and deco parts the Forsaken traders sell) join ship construction alongside
+  the existing structural parts, the Larva Tank helm and two banners join
+  cosmetics, and two names the game moved (`HULK1`, `STA_79`) are taken as
+  written. No existing item changed bucket.
+- The six haunting mementos the Forsaken traders take (`SPOOK_PACKAGE1-6`)
+  report as unsorted: their game category has no precedent in the table, and
+  an unknown id is left where it is until a hand-check places it.
+- A save that reports a version up to 4743 no longer carries the "outside the
+  range this build was verified on" note. 4743 is what 7.10 writes now, and
+  three saves re-serialise byte for byte and apply on it in the corpus.
+
+### Fixed
+
+- The table pull from a game install no longer stops on an archive whose chunk
+  was stored rather than compressed. The texture archives store theirs
+  verbatim, and the pull used to abort with "error determining content size
+  from frame header".
+
 ## [1.0.2] - 2026-09-19
 
 ### Changed

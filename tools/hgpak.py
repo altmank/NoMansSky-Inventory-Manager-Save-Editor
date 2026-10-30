@@ -10,8 +10,10 @@ Format per planet-data.md 0.1, re-verified here against the shipped archives:
     0x28  8     data offset D
     0x30  N*32  entries { u8 name_hash[16]; u64 virtual_offset; u64 size }
           C*8   chunk table: compressed size per chunk, in order
-    D     ...   payloads: raw Zstd frames, each decompressing to exactly 0x10000
-                bytes (the last may be short), padded to a 16-byte boundary
+    D     ...   payloads: a chunk is a raw Zstd frame decompressing to exactly
+                0x10000 bytes, unless it would not shrink, in which case it is
+                stored verbatim at its own length; both are padded to a 16-byte
+                boundary
 
 `virtual_offset` indexes the concatenation of every decompressed chunk, biased
 by D. File entry 0 is a plaintext CRLF manifest naming entries 1..N-1 in order,
@@ -31,6 +33,7 @@ except ImportError:
 
 CHUNK = 0x10000
 MAGIC = b"HGPAK\0\0\0"
+ZSTD_MAGIC = 0xFD2FB528
 
 
 class Pak(object):
@@ -66,7 +69,15 @@ class Pak(object):
         if i not in self._cache:
             self.fh.seek(self.coffs[i])
             raw = self.fh.read(self.csizes[i])
-            self._cache[i] = self._dctx.decompress(raw, max_output_size=CHUNK)
+            head = struct.unpack_from("<I", raw)[0] if len(raw) >= 4 else 0
+            # A chunk that would not shrink is stored verbatim rather than
+            # framed, which is what the texture archives do: their payload is
+            # already compressed, so `read` on the first frame used to fail
+            # with "unknown frame descriptor" and the whole pull aborted.
+            framed = head == ZSTD_MAGIC or 0x184D2A50 <= head <= 0x184D2A5F
+            if framed:
+                raw = self._dctx.decompress(raw, max_output_size=CHUNK)
+            self._cache[i] = raw
             if len(self._cache) > 64:          # bounded: these are 64 KB each
                 self._cache.pop(next(iter(self._cache)))
         return self._cache[i]

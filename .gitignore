@@ -14,6 +14,11 @@ dist/
 *.pre-*
 backups/
 
+# the extract docs/POST-PATCH.md builds the tables from: Hello Games' own
+# content, around 128 MB of it, pulled out of the player's install. It is an
+# input to a regeneration and never part of the repository.
+nms-db/
+
 # a generator run writes a report of what a new game build introduced, for
 # whoever is working through docs/POST-PATCH.md step 4. It is a record of one
 # run and not a release artefact, and it must never reach the package

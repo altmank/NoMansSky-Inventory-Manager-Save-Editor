@@ -2173,8 +2173,8 @@ def _apply_locked(save_path, cfg, expected_fingerprint, plan_builder, backup_roo
     #
     # The version gate is **advisory by default** (DECISIONS.md, "A game update
     # must not turn the tool off"). Nothing was ever measured that says a new
-    # save version moves the container layout -- 4670, 4734 and 4735 have
-    # identical layouts, and the breaks anybody can name were Waypoint moving
+    # save version moves the container layout -- every widening so far found
+    # the same containers, and the breaks anybody can name were Waypoint moving
     # the player state under `BaseContext`, the 3.60 compression change and the
     # `mf_` format going 2001 -> 2004, each of which this build already detects
     # by shape. So a version it has not seen is recorded and the apply

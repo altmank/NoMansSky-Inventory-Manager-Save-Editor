@@ -948,16 +948,17 @@ def on_disk_path(path):
 
 
 #: the closed range of root `Version` values this build has actually been run
-#: against, read from the operator's own corpus: 4670 (`save6.hg`), 4734
-#: (`save3`, `save4`, `save5`, `save7`) and 4735 (`save9`, `save10`) all load
-#: and plan; 4734 and 4735 also apply. 4670's `mf_` is a format 2003
-#: (`mf_save6.hg` is 384 bytes, not 432), which `safety.META_FORMAT` refuses at
-#: step 8, so that save reads and plans and its apply stops before the write.
-#: 4670 is the floor because it is the oldest save in the corpus that carries
-#: `BaseContext`; 4645 (`save.hg`, `save2.hg`) does not and is refused by
-#: `UnsupportedSave` before a version gate could speak. Widened only by a
-#: fixture, never by a guess (GOAL.md Rule 1).
-SUPPORTED_VERSIONS = (4670, 4735)
+#: against, read from the operator's own corpus. 4670 (`save6.hg`) is the floor
+#: because it is the oldest save in the corpus that carries `BaseContext`; 4645
+#: (`save.hg`, `save2.hg`) does not and is refused by `UnsupportedSave` before a
+#: version gate could speak. 4743 is the top: `save3.hg`, `save4.hg` and
+#: `save9.hg` report it after the 7.10 build rewrote them, and all three
+#: re-serialise byte for byte, apply, and discover 75 containers and 12 chests
+#: in the corpus. 4670's `mf_` is a format 2003 (`mf_save6.hg` is 384 bytes,
+#: not 432), which `safety.META_FORMAT` refuses at step 8, so that save reads
+#: and plans and its apply stops before the write. Widened only by a save that
+#: has been through the corpus, never by a guess (GOAL.md Rule 1).
+SUPPORTED_VERSIONS = (4670, 4743)
 
 
 class SaveGate(ValueError):
